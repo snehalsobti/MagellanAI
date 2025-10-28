@@ -1,0 +1,262 @@
+Course Code,Term,Course Name,Math,NS,CS,ES,ED
+ACT230H1,F,Mathematics of Finance for Non-Actuaries,0,0,30,0,0
+APM346H1,F,Partial Differential Equations,42,0,0,0,0
+APM346H1,S,Partial Differential Equations,42,0,0,0,0
+APM462H1,F,Nonlinear Optimization,36,0,0,0,0
+APM462H1,S,Nonlinear Optimization,36,0,0,0,0
+APS360H1,F,Applied Fundamentals of Deep Learning,0,0,0,32,10.7
+APS360H1,S,Applied Fundamentals of Deep Learning,0,0,0,32,10.7
+APS380H1,F,Introduction to Electric Vehicle Design,0,0,0,22.875,22.875
+APS441H1,S,System-Theoretic Accident and Risk Analysis,0,0,17.08,0,25.62
+APS470H1,F,Engineering and Public Health,0,0,12.8,29.9,0
+APS502H1,F,Financial Engineering (free elective only),0,0,0,18.3,18.3
+APS502H1,S,Financial Engineering (free elective only),0,0,0,18.3,18.3
+AST121H1,S,Origin and Evolution of the Universe,0,24,0,0,0
+AST210H1,F,Great Moments in Astronomy,0,24,0,0,0
+AST221H1,F,Stars and Planets,0,36,0,0,0
+AST251H1,S,Life on Other Worlds,0,30,0,0,0
+BME330H1,S,Patents in Biology and Medical Devices,0,0,18.3,18.3,0
+BME331H1,S,Physiological Control Systems,0,36.6,0,12.2,0
+BME412H1,S,Introduction to Biomolecular Engineering,0,27,0,9,0
+BME440H1,F,Biomedical Engineering Technology and Investigation,0,0,0,24.4,24.4
+BME445H1,F,Neural Bioelectricity (formerly ECE445H1),0,20.8,0,31.1,0
+BME455H1,F,Cellular and Molecular Bioengineering II,0,13,0,25.9,13
+BME530H1,S,Human Whole Body Biomechanics,0,9.15,0,27.45,0
+BME595H1,F,Medical Imaging,0,12.2,0,36.6,0
+CHC368H1,S,Varieties of Christian Experience,0,0,30,0,0
+CHE353H1,F,Engineering Biology,0,36.6,0,0,0
+CHE354H1,S,Cellular and Molecular Biology,0,41.2,0,13.7,0
+CHE416H1,S,Chemical Engineering in Human Health,0,42.7,0,0,0
+CHE451H1,F,Petroleum Processing,0,0,0,36.6,0
+CHE462H1,S,Food Engineering,0,0,0,42.7,0
+CHE469H1,S,Fuel Cells and Electrochemical Conversion Devices,0,0,0,21.35,21.35
+CHE471H1,S,Modelling in Biological and Chemical Systems,0,0,0,44.8,0
+CHE475H1,S,Biocomposites: Mechanics and Bioinspiration,0,0,0,32,10.7
+CHE507H1,S,Data-based Modelling for Prediction and Control,0,0,0,42.7,0
+CHE566H1,F,Introduction to Nuclear Engineering,0,14.6,0,34.2,0
+CHE568H1,S,Nuclear Engineering,0,12.8,0,29.9,0
+CIV220H1,F,Urban Engineering Ecology,0,29.9,0,12.8,0
+CIV300H1,F,Terrestrial Energy Systems,0,36.6,0,12.2,0
+CIV300H1,S,Terrestrial Energy Systems,0,36.6,0,12.2,0
+CIV375H1,F,Building Science,0,12.3,0,24.7,12.3
+CIV440H1,S,Environmental Impact and Risk Assessment,0,0,17.1,25.6,0
+COG250Y1,Y,Introduction to Cognitive Science (formerly JUP250),0,0,60,0,0
+CRE210H1,S,Holography for 3D Visualization,0,42,0,0,0
+CSB201H1,F,Molecular Biology Biotechnology and You,0,15,15,0,0
+CSB498Y1,Y,Independent Research in Cell and Systems Biology I,0,0,0,0,0
+CSC303H1,S,Social and Information Networks,0,0,0,30,0
+CSC304H1,F,Algorithmic Game Theory and Mechanism Design,22.5,0,0,7.5,0
+CSC309H1,S,Programming on the Web,0,0,0,22.5,7.5
+CSC309H1,F,Programming on the Web,0,0,0,22.5,7.5
+CSC317H1,F,Computer Graphics (Formerly CSC418H1),0,0,0,21,9
+CSC318H1,S,The Design of Interactive Computational Media,0,0,0,0,30
+CSC318H1,F,The Design of Interactive Computational Media,0,0,0,0,30
+CSC320H1,S,Introduction to Visual Computing,0,0,0,30,0
+CSC336H1,F,Numerical Methods,15,0,0,15,0
+CSC343H1,F,Introduction to Databases,0,0,0,36,0
+CSC343H1,S,Introduction to Databases,0,0,0,36,0
+CSC343H5,S,Introduction to Databases,0,0,0,36,0
+CSC367H1,S,Parallel Programming,0,0,0,30,0
+CSC367H5,F,Parallel Programming,0,0,0,30,0
+CSC384H1,S,Introduction to Artificial Intelligence,0,0,0,30,0
+CSC384H1,F,Introduction to Artificial Intelligence,0,0,0,30,0
+CSC384H5,S,Introduction to Artificial Intelligence,0,0,0,30,0
+CSC401H1,S,Natural Language Computing,7.5,0,0,15,7.5
+CSC404H1,S,Introduction to Video Game Design,0,0,15,15,0
+CSC404H1,F,Introduction to Video Game Design,0,0,15,15,0
+CSC413H1,S,Neural Networks and Deep Learning,0,0,0,0,30
+CSC417H1,F,Physics-Based Animation,7.5,0,0,22.5,0
+CSC419H1,F,Geometry Processing,7.5,0,0,22.5,0
+CSC420H1,S,Introduction to Image Understanding,0,0,0,30,0
+CSC420H1,F,Introduction to Image Understanding,0,0,0,30,0
+CSC420H5,S,Introduction to Image Understanding,0,0,0,30,0
+CSC428H1,S,Human-Computer Interaction,0,0,0,30,0
+CSC428H1,F,Human-Computer Interaction,0,0,0,30,0
+CSC438H1,S,Computability and Logic,30,0,0,30,0
+CSC443H1,S,Database System Technology,0,0,0,30,0
+CSC463H1,F,Computational Complexity and Computability,15,0,0,15,0
+CSC465H1,F,Formal Methods in Software Design,0,0,0,15,15
+CSC469H1,F,Operating Systems Design and Implementation,0,0,0,18,12
+CSC473H1,S,Advanced Algorithm Design,0,0,0,15,15
+CSC485H1,F,Computational Linguistics,0,0,0,36,0
+DMU313H1,S,Introduction to Music Recording,0,0,30,0,0
+ECE159H1,S,Fundamentals of Electric Circuits,0,20.74,0,31.11,0
+ECE253H1,F,Digital and Computer Systems,0,0,0,32.94,21.96
+ECE259H1,S,Electromagnetism,12.81,12.81,0,17.08,0
+ECE302H1,F,Probability and Applications,48.8,0,0,0,0
+ECE302H1,S,Probability and Applications,48.8,0,0,0,0
+ECE311H1,S,Introduction to Control Systems,0,0,0,38.89,12.96
+ECE311H1,F,Introduction to Control Systems,0,0,0,38.89,12.96
+ECE313H1,S,Energy Systems and Distributed Generation (formerly),0,0,0,51.85,0
+ECE314H1,F,Fundamentals of Electrical Energy Systems,0,0,0,38.89,12.96
+ECE316H1,F,Communication Systems,0,0,0,51.85,0
+ECE316H1,S,Communication Systems,0,0,0,51.85,0
+ECE318H1,F,Fundamentals of Optics,0,31.11,0,20.74,0
+ECE318H1,S,Fundamentals of Optics,0,31.11,0,20.74,0
+ECE320H1,F,Fields and Waves,0,30.11,0,20.74,0
+ECE326H1,F,Programming Languages (formerly CSC326H1),0,0,0,38.89,12.96
+ECE330H1,S,Quantum and Semiconductor Physics,0,29.28,0,19.52,0
+ECE331H1,F,Analog Electronics,0,0,0,36.3,15.55
+ECE334H1,S,Digital Electronics,0,0,0,36.3,15.55
+ECE334H1,F,Digital Electronics,0,0,0,36.3,15.55
+ECE335H1,F,Introduction to Electronic Devices,0,17.38,0,40.57,0
+ECE342H1,S,Computer Hardware,0,0,0,27.45,27.45
+ECE344H1,F,Operating Systems,0,0,0,32.94,21.96
+ECE344H1,S,Operating Systems,0,0,0,32.94,21.96
+ECE345H1,F,Algorithms & Data Structures,0,0,0,36.6,12.2
+ECE345H1,S,Algorithms & Data Structures,0,0,0,36.6,12.2
+ECE349H1,F,Introduction to Energy Systems,0,0,0,51.85,0
+ECE350H1,S,Semiconductor Electronic Devices,0,15.55,0,36.3,0
+ECE352H1,F,Computer Organization,0,0,0,27.45,27.45
+ECE353H1,S,Systems Software,0,0,0,54.9,0
+ECE354H1,S,Electronic Circuits,0,0,0,22.875,22.875
+ECE355H1,F,Signal Analysis and Communication,0,0,0,48.8,0
+ECE356H1,S,Linear Systems and Control,0,0,0,38.89,12.96
+ECE357H1,S,Electromagnetic Fields,0,0,0,51.85,0
+ECE358H1,F,Foundations of Computing,0,0,0,42.7,0
+ECE360H1,F,Electronics,0,0,0,25.925,25.925
+ECE361H1,F,Computer Networks I,0,0,0,38.89,12.96
+ECE361H1,S,Computer Networks I,0,0,0,38.89,12.96
+ECE363H1,S,Communication Systems,0,0,0,51.85,0
+ECE367H1,F,Matrix Algebra and Optimization,24.4,0,0,24.4,0
+ECE368H1,S,Probabilistic Reasoning,32,0,0,10.7,0
+ECE410H1,F,Linear Control Systems,0,0,0,38.89,12.96
+ECE411H1,S,Adaptive Control and Reinforcement Learning,0,0,0,38.89,12.96
+ECE412H1,S,Analog Signal Processing Circuits (formerly ECE512),0,0,0,24.4,24.4
+ECE417H1,F,Digital Communication,0,0,0,38.89,12.96
+ECE419H1,S,Distributed Systems,0,0,0,25.925,25.925
+ECE421H1,F,Introduction to Machine Learning,0,0,0,48.8,0
+ECE421H1,S,Introduction to Machine Learning,0,0,0,48.8,0
+ECE422H1,S,Radio and Microwave Wireless Systems,0,0,0,38.89,12.96
+ECE424H1,F,Microwave Circuits (formerly ECE524H1),0,0,0,25.925,25.925
+ECE427H1,F,Photonic Devices,0,12.2,0,36.6,0
+ECE430H1,F,Analog Integrated Circuits (formerly ECE530H1),0,0,0,25.925,25.925
+ECE431H1,F,Digital Signal Processing,0,0,0,38.89,12.96
+ECE435H1,F,Quantum Computing Hardware,0,0,0,28.975,28.975
+ECE437H1,S,VLSI Technology,0,0,0,27.45,27.45
+ECE441H1,F,Interfacing & Modulating the Nervous System,0,0,0,67.1,0
+ECE442H1,F,Introduction to Micro- and Nano-Fabrication Technology,0,0,0,56.4,0
+ECE444H1,F,Software Engineering (formerly CSC444H1),0,0,0,27.45,27.45
+ECE446H1,F,Audio Acoustics and Sensing,0,11.43,0,16.01,18.3
+ECE448H1,S,Biocomputation,0,12.2,0,36.6,0
+ECE454H1,F,Computer Systems Programming,0,0,0,27.45,27.45
+ECE461H1,F,Internetworking,0,0,0,48.8,0
+ECE462H1,S,Multimedia Systems,0,0,0,48.8,0
+ECE463H1,S,Electric Drives,0,0,0,38.89,12.96
+ECE464H1,S,Wireless Communication,0,0,0,38.89,12.96
+ECE466H1,S,Computer Networks II,0,0,0,38.89,12.96
+ECE467H1,F,Compilers and Interpreters (formerly CSC467H1),0,0,0,38.89,12.96
+ECE469H1,S,Optical Communications and Networks,0,0,0,12.96,38.89
+ECE470H1,S,Robot Modeling and Control,0,12.96,0,38.89,0
+ECE470H1,F,Robot Modeling and Control,0,12.96,0,38.89,0
+ECE484H1,S,Quantum Information Processing: Algorithms & Software,0,0,0,24.4,24.4
+ECE499H1,F,Research Thesis,0,0,0,0,0
+ECE499Y1,Y,Research Thesis,0,0,0,0,0
+ECE516H1,S,Intelligent Image Processing,0,0,0,41.175,13.725
+ECE520H1,F,Power Electronics,0,0,0,25.925,25.925
+ECE526H1,F,Power System Protection and Automation,0,0,0,48.8,0
+ECE532H1,S,Digital Systems Design,0,0,0,21.96,32.94
+ECE537H1,F,Random Processes,48.8,0,0,0,0
+ECE552H1,F,Computer Architecture,0,0,0,25.925,25.925
+ECE557H1,F,Systems Control,0,0,0,38.89,12.96
+ECE568H1,F,Computer Security,0,0,0,27.45,27.45
+ECE568H1,S,Computer Security,0,0,0,27.45,27.45
+EEB202H1,F,Plants and Society,0,24,0,0,0
+EEB214H1,S,Evolution and Adaptation,0,0,30,0,0
+EEB386H1,S,Diversity of Birds,0,36,0,0,0
+EESA10H3,S,Human Health and the Environment,0,0,30,0,0
+ENV101H1,S,Confronting the Climate Crisis,0,0,24,0,0
+ENV200H1,S,Assessing Global Change: Science and the Environment,0,26,0,0,0
+ENV235H1,S,Physics and the Environment,0,30,0,0,0
+ESC384H1,F,Partial Differential Equations,41.3,0,0,0,0
+ESS103H1,F,Geology in Public Issues,0,24,0,0,0
+ESS105H1,S,Our Home Planet,0,24,0,0,0
+ESS205H1,S,Confronting Global Change,0,28,0,0,0
+ESS241H1,F,Geologic Structures and Maps,0,41.6,0,0,0
+ESS261H1,S,Earth System Evolution (formerly GLG217H1),0,42,0,0,0
+FOR200H1,F,Conservation of Canadas Forests,0,0,30,0,0
+FOR201H1,S,Conservation of Tropical and Subtropical Forests,0,0,30,0,0
+FOR300H1,S,Forest Products in Sustainable Forestry,0,36,0,0,0
+FOR305H1,F,Biology of Trees and Forests,0,44,0,0,0
+FOR310H1,S,Bioenergy from Sustainable Forest Management,0,7.5,7.5,15,0
+FOR410H1,S,Bioenergy and Biorefinery Technology,0,0,0,36,0
+FOR419H1,S,Forest Fire Behaviour and Management,0,9,27,0,0
+FOR425H1,S,Bioenergy and Biorefinery Technology,0,0,9.6,28.8,0
+FS1TRFH1,F,Free elective transfer - Science,0,30,0,0,0
+GGR100H1,S,Introduction to Physical Geography,0,26,0,0,0
+GGR101H1,F,Ancient Civilizations and their Environments,0,24,0,0,0
+GGR201H1,S,Geomorphology,0,28,0,0,0
+GGR203H1,S,Introduction to Climatology,0,36,0,0,0
+GGR205H1,F,Introduction to Soil Science,0,28,0,0,0
+GGR206H1,F,Introduction to Hydrology,0,32,0,0,0
+GGR272H1,F,Geographic Information and Mapping I,0,0,30,0,0
+GGR303H1,F,Climate-Bioshpere Interactions,0,24,0,0,0
+GGR304H1,F,Biogeography,0,24,0,0,0
+GGR308H1,S,Physical Aspects of the Canadian Arctic and Subarctic,0,24,0,0,0
+GGR337H1,S,Environmental Remote Sensing,0,36,0,0,0
+GGR347H1,F,Efficient Use of Energy (formerly JGE347H1),0,0,0,20.3,6.8
+GGR348H1,S,Carbon-Free Energy (formerly JGE348H1),0,0,0,20.3,6.8
+HIS205H1,F,Topics in Women's History,0,0,30,0,0
+HMB200H1,S,Introduction to Neuroscience,0,30,0,0,0
+IMM250H1,S,The Immune System and Infectious Disease,0,24,0,0,0
+IMM250H1,F,The Immune System and Infectious Disease,0,24,0,0,0
+JEG100H1,S,Introduction to Physical Geography and Earth Science,0,30,0,0,0
+JGE236H1,F,Human Interactions with the Environment (formerly),0,26,0,0,0
+JPE395H1,S,Physics of the Earth (Formerly PHY395H1),0,24,0,0,0
+JSC301H1,S,Principles and Practices in Science Education,0,0,30,0,0
+LIN232H1,F,Syntactic Patterns in Language,0,0,30,0,0
+MAT301H1,F,Groups and Symmetries,36,0,0,0,0
+MAT301H1,S,Groups and Symmetries,36,0,0,0,0
+MAT327H1,F,Introduction to Topology,36,0,0,0,0
+MAT332H1,F,Introduction to Graph Theory [36L],36,0,0,0,0
+MAT336H1,S,Elements of Analysis,42,0,0,0,0
+MAT337H1,S,Introduction to Real Analysis,36,0,0,0,0
+MAT363H1,S,Introduction to Differential Geometry,36,0,0,0,0
+MIE242H1,F,Foundations of Cognitive Psychology,0,54.9,0,0,0
+MIE342H1,F,Circuits with Applications to Mechanical Engineering,0,0,0,35.1,15
+MIE343H1,F,Industrial Ergonomics and the Workplace,0,26.6,0,26.6,0
+MIE344H1,S,Ergonomic Design of Information Systems,0,0,0,34.6,23
+MIE369H1,S,Introduction to Artificial Intelligence,0,0,0,38.4,12.8
+MIE402H1,S,Vibrations,0,0,0,38.4,16.5
+MIE439H1,F,Biomechanics I,0,12.1,0,12.1,24.1
+MIE440H1,F,Design of Innovative Products,0,0,0,21.4,21.4
+MIE443H1,S,Mechatronics Systems: Design and Integration,0,0,0,17.3,40.3
+MIE444H1,F,Mechatronics Principles,0,0,0,17.1,25.7
+MIE469H1,S,Reliability and Maintainability Engineering,0,0,0,38.4,12.8
+MIE505H1,S,Micro/Nano Robotics,0,0,0,43.2,14.4
+MIE519H1,S,Advanced Manufacturing Technologies,0,0,0,19.2,19.2
+MIE523H1,F,Engineering Psychology and Human Performance,0,0,0,39.8,13.3
+MIE535H1,S,Electrification through Electricity Markets,0,0,0,51.2,0
+MIE540H1,S,Product Design,0,0,0,22.4,22.4
+MIE561H1,S,Healthcare Systems,0,0,0,25.6,25.6
+MIE566H1,F,Decision Analysis,0,0,0,59,0
+MIE567H1,S,Dynamic & Distributed Decision Making,12.8,0,0,25.6,12.8
+MSE219H1,F,Structure and Characterization of Materials,0,30.5,0,30.5,0
+MSE335H1,S,Material Physics,0,33.6,0,11.2,0
+MSE431H1,S,Forensic Engineering,0,0,0,22.4,22.4
+NFS284H1,F,Basic Human Nutrition,0,36,0,0,0
+NFS284H1,S,Basic Human Nutrition,0,36,0,0,0
+PCL102H1,S,The Art of Drug Discovery,0,24,0,0,0
+PHL342H1,F,Minds and Machines,0,0,30,0,0
+PHL342H1,S,Minds and Machines,0,0,30,0,0
+PHL345H1,F,Intermediate Logic,0,0,30,0,0
+PHY354H1,S,Advanced Classical Mechanics,0,30,0,0,0
+PHY356H1,F,Quantum Mechanics I,0,30,0,0,0
+PHY358H1,S,"Atoms, Molecules and Solids",0,30,0,0,0
+PHY365H1,S,Quantum Information,0,15,0,15,0
+PHY456H1,F,Quantum Mechanics II,0,30,0,0,0
+PHY485H1,F,Laser Physics (formerly called 'Lasers and Modern),0,24,0,0,0
+PSL201Y1,Y,Basic Human Physiology,0,56,0,0,0
+PSY100H1,S,Introductory Psychology,0,36,0,0,0
+PSY100H1,F,Introductory Psychology,0,36,0,0,0
+PSY220H1,F,Introduction to Social Psychology,0,0,30,0,0
+PSY220H1,S,Introduction to Social Psychology,0,0,30,0,0
+ROB310H1,F,Mathematics for Robotics,31.4,0,0,13.4,0
+ROB311H1,S,Artificial Intelligence,0,0,0,44.8,0
+STA220H1,F,The Practice of Statistics I,36,0,0,0,0
+STA304H1,S,Surveys Sampling and Observational Data,9,0,27,0,0
+STA304H1,F,Surveys Sampling and Observational Data,9,0,27,0,0
+TMU111H1,F,Introduction to Computer Applications in Music,0,0,30,0,0
+TMU111H1,S,Introduction to Computer Applications in Music,0,0,30,0,0
+TMU112H1,F,Introduction to Composition I,0,0,30,0,0
+TMU313H1,F,Music Recording,0,0,30,0,0

@@ -6,8 +6,9 @@ class Course:
 
     def __init__(self,
                  course_code: str,
-                 num_credits: int,
+                 num_credits: float,
                  area: int = None,
+                 term: str = "F", # F S Y
                  ceab: CEABAttributes = None,
                  kernel_course: bool = False,
                  technical_elective: bool = False,

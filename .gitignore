@@ -1,3 +1,5 @@
 otherData/
 .vscode/
 build/
+__init__.py
+__pycache__

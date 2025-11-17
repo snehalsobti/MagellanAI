@@ -27,6 +27,14 @@ class ConstraintVerifier:
     def verify_total_credits(self) -> bool:
         total = sum(c.num_credits for c in self.courses)
         return total == self.constraints["total_num_credits"]
+    
+    def verify_no_repetition(self) -> bool:
+        seen = set()
+        for c in self.courses:
+            if c.course_code in seen:
+                return False
+            seen.add(c.course_code)
+        return True
 
     # ----------------------------------------------------------
     # 2. ECE472 must exist
@@ -84,6 +92,7 @@ class ConstraintVerifier:
             ("ECE472 Required", self.verify_ece472()),
             ("Kernel Requirement", self.verify_kernel_requirement()),
             ("Depth Requirement", self.verify_depth_requirement()),
+            ("No Repetition Requirement", self.verify_no_repetition()),
         ]
 
         all_ok = True

@@ -1,4 +1,4 @@
-# ceab_attributes.py
+# backend/types/ceab_attributes.py
 class CEABAttributes:
     """Represents CEAB accreditation attribute breakdown for a course."""
 

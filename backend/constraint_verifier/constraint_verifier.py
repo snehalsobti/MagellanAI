@@ -1,9 +1,9 @@
-# ConstraintVerifier/constraint_verifier.py
+# backend/constraint_verifier/constraint_verifier.py
 
 import json
 import os
 from typing import List
-from courses import Course
+from backend.course import Course
 
 
 class ConstraintVerifier:
@@ -40,13 +40,22 @@ class ConstraintVerifier:
     # 2. ECE472 must exist
     # ----------------------------------------------------------
     def verify_ece472(self) -> bool:
-        required = self.constraints["ECE472_required"]
+        required = self.constraints["ece472_required"]
         if not required:
             return True
-        return any(c.course_code == "ECE472" for c in self.courses)
+        return any(c.course_code == "ECE472H1" for c in self.courses)
 
     # ----------------------------------------------------------
-    # 3. Kernel count >= min_kernel_requirement
+    # 3. Capstone must exist
+    # ----------------------------------------------------------
+    def verify_capstone(self) -> bool:
+        required = self.constraints["capstone_required"]
+        if not required:
+            return True
+        return any(c.course_code in ["ECE496Y1", "APS490Y1", "BME498Y1"] for c in self.courses)
+
+    # ----------------------------------------------------------
+    # 4. Kernel count >= min_kernel_requirement
     # ----------------------------------------------------------
     def verify_kernel_requirement(self) -> bool:
         # Collect all areas where the student took a kernel course
@@ -56,7 +65,7 @@ class ConstraintVerifier:
         return len(kernel_areas) >= 4
 
     # ----------------------------------------------------------
-    # 4. Depth requirement
+    # 5. Depth requirement
     # A "depth-qualified" area must have:
     #    - 1 kernel course in that area
     #    - at least 2 other courses in that area
@@ -90,6 +99,7 @@ class ConstraintVerifier:
         checks = [
             ("Total Credits Requirement", self.verify_total_credits()),
             ("ECE472 Required", self.verify_ece472()),
+            ("Capstone Required", self.verify_capstone()),
             ("Kernel Requirement", self.verify_kernel_requirement()),
             ("Depth Requirement", self.verify_depth_requirement()),
             ("No Repetition Requirement", self.verify_no_repetition()),

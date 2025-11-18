@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file if present
 
 # Config
-# data folder is in the parent of RankingEngineLayer
+# data folder is in the parent of ranking_engine
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "courses_description.ods"
 CACHE_DIR = Path(".rag_cache")
 EMB_FILE = CACHE_DIR / "course_embeddings.npy"

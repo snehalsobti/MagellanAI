@@ -256,12 +256,15 @@ class ProfileGenerator:
             preferences_skipped = [c for c in preferences_clean if c not in preferences_used]
             preferences_skipped = preferences_skipped + preferences_invalid
 
+            kernel_areas.sort()
+            depth_areas.sort()
+
             result = {
                 "courses": plan,
                 "total_credits": credits,
                 "kernel_areas_selected": kernel_areas,
                 "depth_areas_selected": depth_areas,
-                "preferences_requested": preferences_clean,
+                "preferences_requested": preferences,
                 "preferences_used": preferences_used,
                 "preferences_skipped": preferences_skipped,
                 "seed_used": seed,

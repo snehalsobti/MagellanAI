@@ -211,25 +211,32 @@ def rag_model(user_prompt: str, k: int = 10, retrieval_k: int = None, data_path:
     Full RAG pipeline:
       1. Dense-retrieval to get candidate courses (retrieval_k).
       2. Pass candidates + user prompt to ChatGPT to produce a final ranked list (JSON array).
-      3. Parse and return Python list[str] of course codes in descending relevance.
+      3. Parse, validate (only from candidates), pad with retrieval results if needed, and return exactly k course codes.
 
-    Parameters:
-      - user_prompt: user interests/goals (string)
-      - k: number of results to return (clamped to [MIN_K, MAX_K])
-      - retrieval_k: number of candidates to send to the LLM (defaults to MAX_K)
+    Behavior:
+      - k is clamped to [MIN_K, MAX_K].
+      - By default retrieval_k = 3 * k (capped to the number of available courses).
+      - The LLM is asked to return at most k items. Final returned list is exactly k items (or fewer if dataset smaller).
     """
     if not isinstance(user_prompt, str) or user_prompt.strip() == "":
         return []
 
+    # clamp k
     k = int(k)
     k = max(MIN_K, min(MAX_K, k))
-    retrieval_k = retrieval_k or max(MAX_K, k)
 
-    # Step 1: retrieval (we retrieve retrieval_k candidates)
+    # Load index
     codes_all, texts_all, embeddings = build_or_load_index(data_path)
     if len(codes_all) == 0:
         return []
 
+    # Default retrieval_k = 3 * k (cap to available items). If caller provided retrieval_k, use it (clamped).
+    if retrieval_k is None:
+        retrieval_k = min(len(codes_all), 3 * k)
+    else:
+        retrieval_k = max(1, min(len(codes_all), int(retrieval_k)))
+
+    # Step 1: retrieval
     model = get_model()
     q_emb = model.encode([user_prompt], convert_to_numpy=True, normalize_embeddings=True)
     sims = (embeddings @ q_emb[0]).reshape(-1)
@@ -244,22 +251,17 @@ def rag_model(user_prompt: str, k: int = 10, retrieval_k: int = None, data_path:
     try:
         raw = call_chatgpt_system(user_prompt, candidates_block, k)
     except Exception as e:
-        # If ChatGPT call fails (missing key, network, etc), provide clear debug info and fall back
-        # to dense-retrieval order so the function still returns results.
-        # For debugging locally, raise the error instead of silently falling back:
-        # raise
-        # Fallback return:
+        # Fallback to dense retrieval order if LLM call fails
         print(f"Warning: ChatGPT call failed, falling back to dense retrieval. Error: {e}")
-        return candidate_codes[:k]
+        # If dataset smaller than k, return up to available items
+        return candidate_codes[:min(k, len(candidate_codes))]
 
-    # Step 3: parse JSON out of raw response
-    raw = raw.strip()
+    # Step 3: parse JSON out of raw response and validate
+    raw = (raw or "").strip()
     parsed = None
-    # Try direct JSON parse
     try:
         parsed = json.loads(raw)
     except Exception:
-        # Try to extract first JSON array in text
         m = re.search(r"(\[.*\])", raw, re.S)
         if m:
             try:
@@ -267,18 +269,31 @@ def rag_model(user_prompt: str, k: int = 10, retrieval_k: int = None, data_path:
             except Exception:
                 parsed = None
 
-    # Validate parsed result: must be list of strings (course codes)
+    # Validate parsed result: must be list of strings and drawn from candidate_codes
     if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
-        # Truncate/pad to k
-        return parsed[:k]
-    # Fallback: return retrieval-only codes
-    return candidate_codes[:k]
+        validated = []
+        candidate_set = set(candidate_codes)
+        for code in parsed:
+            if code in candidate_set and code not in validated:
+                validated.append(code)
+        # Pad with retrieval-order candidates if LLM provided fewer than k valid items
+        if len(validated) < k:
+            for c in candidate_codes:
+                if c not in validated:
+                    validated.append(c)
+                if len(validated) >= k:
+                    break
+        # Ensure we don't return more than available courses
+        return validated[:min(k, len(candidate_codes))]
+
+    # Fallback: return retrieval-only codes (clamped to k or available count)
+    return candidate_codes[:min(k, len(candidate_codes))]
 
 if __name__ == "__main__":
     prompt = input("Describe your interests and goals: ").strip()
     if prompt:
         try:
-            results = rag_model(prompt, k=10)
+            results = rag_model(prompt, k=20)
             print(results)
         except Exception as e:
             print("Error:", str(e))

@@ -95,7 +95,8 @@ class TestProfileGenerator(unittest.TestCase):
 
     def test_pretty_printer_does_not_crash(self):
         gen = ProfileGenerator(self.courses)
-        result = gen.generate_profile(seed=2222)
+        prefs = ["ECE454H1", "ECE302H1", "ECE444H1", "ECE555H1", "ECE111H1"]
+        result = gen.generate_profile(seed=2222, preferences=prefs)
 
         # Ensure printing works without errors
         try:

@@ -239,7 +239,7 @@ def rag_model(user_prompt: str, k: int = 10, retrieval_k: int = None, data_path:
 
     # Build candidate block for prompt
     candidates_block = _build_candidates_block(candidate_codes, candidate_texts)
-
+ 
     # Step 2: call ChatGPT to rerank/synthesize and produce strict JSON array
     try:
         raw = call_chatgpt_system(user_prompt, candidates_block, k)

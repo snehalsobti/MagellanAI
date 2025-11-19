@@ -1,0 +1,108 @@
+# backend/profile_generator/test_profile_generator.py
+
+import os
+import unittest
+
+from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
+from backend.profile_generator.profile_generator import ProfileGenerator
+from backend.profile_generator.profile_printer import ProfilePrinter
+from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
+from backend.types.constants import CourseConstants
+
+class TestProfileGenerator(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        """Load the technical_courses.ods once for all tests."""
+        current = os.path.abspath(__file__)
+        profile_generator_dir = os.path.dirname(current)
+        backend_dir = os.path.dirname(profile_generator_dir)
+        project_root = os.path.dirname(backend_dir)
+
+        data_path = os.path.join(project_root, "data", "technical_courses.ods")
+        cls.courses = TechnicalCourseLoader.load_technical_courses(data_path)
+
+    def test_basic_generation(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=123)
+
+        verifier = ConstraintVerifier(result["courses"])
+        self.assertTrue(verifier.verify())
+
+    def test_seed_determinism(self):
+        gen = ProfileGenerator(self.courses)
+
+        r1 = gen.generate_profile(seed=42)
+        r2 = gen.generate_profile(seed=42)
+
+        c1 = [c.course_code for c in r1["courses"]]
+        c2 = [c.course_code for c in r2["courses"]]
+
+        self.assertEqual(c1, c2)
+
+    def test_contains_ece472(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=55)
+
+        codes = [c.course_code for c in result["courses"]]
+        self.assertIn("ECE472H1", codes)
+
+    def test_exactly_one_capstone(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=202)
+
+        caps = [
+            c.course_code
+            for c in result["courses"]
+            if c.course_code in CourseConstants.CAPSTONE_CODES
+        ]
+
+        self.assertEqual(len(caps), 1)
+
+    def test_no_repetition(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=88)
+
+        codes = [c.course_code for c in result["courses"]]
+        self.assertEqual(len(codes), len(set(codes)))
+
+    def test_total_credits_exact(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=303)
+
+        self.assertAlmostEqual(result["total_credits"], 10.0, places=6)
+
+    def test_preferences_respected_soft(self):
+        gen = ProfileGenerator(self.courses)
+
+        prefs = ["ECE454H1", "ECE302H1", "ECE444H1"]
+        result = gen.generate_profile(seed=99, preferences=prefs)
+
+        used = set(result["preferences_used"])
+        # At least one preference should appear (soft preference)
+        self.assertGreaterEqual(len(used), 1)
+
+        for u in used:
+            self.assertIn(u, prefs)
+
+    def test_kernel_depth_constraints(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=77)
+
+        verifier = ConstraintVerifier(result["courses"])
+        self.assertTrue(verifier.verify_kernel_requirement())
+        self.assertTrue(verifier.verify_depth_requirement())
+
+    def test_pretty_printer_does_not_crash(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=2222)
+
+        # Ensure printing works without errors
+        try:
+            ProfilePrinter.print_profile(result)
+        except Exception as e:
+            self.fail(f"Pretty printer crashed: {e}")
+
+
+if __name__ == "__main__":
+    unittest.main()

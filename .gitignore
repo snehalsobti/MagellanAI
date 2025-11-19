@@ -2,3 +2,4 @@ otherData/
 .vscode/
 build/
 __pycache__/
+.env

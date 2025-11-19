@@ -3,8 +3,8 @@
 import json
 import os
 from typing import List
-from backend.course import Course
-
+from backend.types.constants import CourseConstants
+from backend.types.course import Course
 
 class ConstraintVerifier:
     def __init__(self, courses, json_path=None):
@@ -50,9 +50,17 @@ class ConstraintVerifier:
     # ----------------------------------------------------------
     def verify_capstone(self) -> bool:
         required = self.constraints["capstone_required"]
+
+        # Count how many capstones occur
+        count = sum(c.course_code in CourseConstants.CAPSTONE_CODES for c in self.courses)
+
         if not required:
-            return True
-        return any(c.course_code in ["ECE496Y1", "APS490Y1", "BME498Y1"] for c in self.courses)
+            # If not required, then 0 or 1 is okay, but 2+ should still fail
+            return count <= 1
+
+        # If required -> must be exactly 1
+        return count == 1
+
 
     # ----------------------------------------------------------
     # 4. Kernel count >= min_kernel_requirement

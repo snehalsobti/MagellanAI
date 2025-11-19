@@ -2,10 +2,9 @@
 
 import unittest
 
-from backend.course import Course
-from backend.ceab_attributes import CEABAttributes
+from backend.types.course import Course
+from backend.types.ceab_attributes import CEABAttributes
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
-
 
 class TestConstraintVerifier(unittest.TestCase):
 

@@ -2,215 +2,276 @@
 
 import os
 import random
-import pandas as pd
 
-from backend.course import Course
-from backend.ceab_attributes import CEABAttributes
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
+from backend.profile_generator.profile_printer import ProfilePrinter
+from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
+from backend.types.constants import CourseConstants
+from backend.types.course import Course
 
-
-# ---------------------------------------------------------
-#  TECHNICAL COURSE LOADER
-# ---------------------------------------------------------
-class TechnicalCourseLoader:
-
-    @staticmethod
-    def get_num_credits(course_code: str) -> float:
-        """
-        Determine credits from the code suffix:
-        - ...H* → 0.5
-        - ...Y* → 1.0
-        """
-        code = course_code.strip()
-        if len(code) < 2:
-            raise ValueError(f"Invalid course code: {course_code}")
-
-        kind = code[-2]  # e.g., 'H' or 'Y' in ECE318H1 / ECE496Y1
-        if kind == "H":
-            return 0.5
-        if kind == "Y":
-            return 1.0
-
-        raise ValueError(f"Could not determine credit value for: {course_code}")
-
-    @staticmethod
-    def load_technical_courses(file_path: str) -> list[Course]:
-        """Loads technical_courses.ods from disk and returns Course objects."""
-        df = pd.read_excel(file_path, engine="odf")
-
-        courses: list[Course] = []
-
-        for _, row in df.iterrows():
-            course_code = str(row["Course Code"]).strip()
-            term = str(row["Term"]).strip()
-            area = int(row["Area"])
-            kernel_flag = bool(int(row["Kernel"]))
-
-            num_credits = TechnicalCourseLoader.get_num_credits(course_code)
-
-            courses.append(
-                Course(
-                    course_code=course_code,
-                    num_credits=num_credits,
-                    term=term,
-                    area=area,
-                    kernel_course=kernel_flag,
-                    technical_elective=True,
-                    free_elective=True,
-                    ceab=None,
-                )
-            )
-
-        return courses
-
-
-# ---------------------------------------------------------
-#  PROFILE GENERATOR (CONSTRAINT SATISFACTION)
-# ---------------------------------------------------------
 class ProfileGenerator:
+
     def __init__(self, technical_courses: list[Course]):
-        # Keep ALL rows (including duplicates, areas 1–7, terms F/S/Y, etc.)
-        # We'll enforce uniqueness by course_code only in the generated profile.
+        # Keep ALL rows (even duplicates); we enforce uniqueness by course_code
         self.courses: list[Course] = technical_courses
 
     # -----------------------------------------------------
     #  Main API
     # -----------------------------------------------------
-    def generate_profile(self, seed: int | None = None) -> dict:
+    def generate_profile(
+        self,
+        seed: int | None = None,
+        preferences: list[str] | None = None,
+    ) -> dict:
         """
-        Generate a random but valid course list that satisfies constraints.
-        Returns a dict with metadata.
-
-        The generated course list will have unique course codes (no repetition),
-        but self.courses may contain duplicates (same code in multiple terms/areas).
+        Generate a random but valid course list that satisfies all constraints.
+        Soft preferences (ranked list of course codes) may be provided.
         """
 
         rng = random.Random(seed)
 
+        # ---------------------------------------------
+        # Normalize preferences — preserve order, dedupe by code
+        # ---------------------------------------------
+        preferences = preferences or []
+        preferred_set = set()
+        preferences_clean: list[str] = []
+        for code in preferences:
+            if code not in preferred_set:
+                preferred_set.add(code)
+                preferences_clean.append(code)
+
+        # Validate preferred codes
+        available_codes = {c.course_code for c in self.courses}
+        invalid = [c for c in preferences_clean if c not in available_codes]
+        if invalid:
+            raise ValueError(f"Invalid preferred course codes: {invalid}")
+
+        # Main generation loop (may restart if we get stuck)
         while True:
             plan: list[Course] = []
             chosen_codes: set[str] = set()
             credits = 0.0
+            preferences_used: list[str] = []
 
-            # -------------------------------------------------
-            # 1. Required: ECE472H1
-            # -------------------------------------------------
+            # =====================================================
+            # 1. Required — ECE472H1
+            # =====================================================
             ece472 = self._find_course("ECE472H1")
             if ece472 is None:
-                raise ValueError("ECE472H1 not found in technical courses!")
+                raise ValueError("ECE472H1 missing from dataset!")
 
             plan.append(ece472)
             chosen_codes.add(ece472.course_code)
-            credits += ece472.num_credits  # should be 0.5
+            credits += ece472.num_credits
+            if ece472.course_code in preferences_clean:
+                preferences_used.append(ece472.course_code)
 
-            # -------------------------------------------------
-            # 2. Required: 1 capstone
-            # -------------------------------------------------
-            capstone_codes = ["ECE496Y1", "APS490Y1", "BME498Y1"]
-            capstones = [self._find_course(c) for c in capstone_codes if self._exists(c)]
+            # =====================================================
+            # 2. Required — EXACTLY 1 capstone
+            #    Prefer the first preferred capstone if given.
+            # =====================================================
+            capstones_available = [
+                code for code in CourseConstants.CAPSTONE_CODES if self._exists(code)
+            ]
+            if not capstones_available:
+                raise ValueError("No capstone available in dataset!")
 
-            if not capstones:
-                raise ValueError("No available capstone courses in dataset!")
+            preferred_capstones = [
+                code for code in preferences_clean if code in capstones_available
+            ]
+            if preferred_capstones:
+                chosen_cap_code = preferred_capstones[0]
+            else:
+                chosen_cap_code = rng.choice(capstones_available)
 
-            capstone = rng.choice(capstones)
+            capstone = self._find_course(chosen_cap_code)
             plan.append(capstone)
             chosen_codes.add(capstone.course_code)
-            credits += capstone.num_credits  # should be 1.0
+            credits += capstone.num_credits
+            if capstone.course_code in preferences_clean:
+                preferences_used.append(capstone.course_code)
 
-            # -------------------------------------------------
-            # 3. Select 4 distinct kernel areas (from 1–6 only)
-            # -------------------------------------------------
+            # =====================================================
+            # 3. Select 4 kernel areas (areas 1–6), unique by course code
+            #    Prefer preferred kernels.
+            # =====================================================
             kernel_by_area = self._group_kernel_courses_by_area()
             all_kernel_areas = list(kernel_by_area.keys())
-
             if len(all_kernel_areas) < 4:
-                raise ValueError("Not enough kernel areas (1–6) available!")
+                raise ValueError("Not enough kernel areas available (need ≥4).")
 
             kernel_areas = rng.sample(all_kernel_areas, 4)
+            restart = False
 
-            kernel_courses: list[Course] = []
             for area in kernel_areas:
-                kc = rng.choice(kernel_by_area[area])
-                kernel_courses.append(kc)
+                kernels = kernel_by_area[area]
 
-                if kc.course_code not in chosen_codes:
-                    plan.append(kc)
-                    chosen_codes.add(kc.course_code)
-                    credits += kc.num_credits
+                # Only consider kernels whose course_code isn't already chosen
+                unused_kernels = [
+                    c for c in kernels if c.course_code not in chosen_codes
+                ]
+                if not unused_kernels:
+                    restart = True
+                    break
 
-            # -------------------------------------------------
-            # 4. Select 2 depth areas from the chosen kernel areas
-            #    (each needs ≥ 1 kernel + ≥ 2 more courses in that area)
-            # -------------------------------------------------
+                preferred_kernels = [
+                    c for c in unused_kernels
+                    if c.course_code in preferences_clean
+                ]
+
+                if preferred_kernels:
+                    kc = preferred_kernels[0]
+                else:
+                    kc = rng.choice(unused_kernels)
+
+                plan.append(kc)
+                chosen_codes.add(kc.course_code)
+                credits += kc.num_credits
+
+                if kc.course_code in preferences_clean:
+                    preferences_used.append(kc.course_code)
+
+            if restart:
+                continue  # restart whole loop
+
+            # =====================================================
+            # 4. Pick 2 depth areas and select 2 non-kernel courses in each
+            #    Prefer preferred courses when possible.
+            #    Ensure uniqueness by course_code.
+            # =====================================================
             depth_areas = rng.sample(kernel_areas, 2)
             depth_extra: list[Course] = []
 
             for area in depth_areas:
-                # All courses in this area (kernel or non-kernel), area 1–6 only
-                pool = [c for c in self.courses if c.area == area and not c.kernel_course]
+                # All non-kernel courses in this area whose codes not yet chosen
+                pool = [
+                    c for c in self.courses
+                    if c.area == area
+                    and not c.kernel_course
+                    and c.course_code not in chosen_codes
+                ]
 
                 if len(pool) < 2:
-                    break  # restart whole generation loop
+                    restart = True
+                    break
 
-                chosen_two = rng.sample(pool, 2)
+                # Track codes chosen within this depth area to avoid duplicates
+                local_codes: set[str] = set()
+                chosen_list: list[Course] = []
 
-                for c in chosen_two:
-                    if c.course_code in chosen_codes:
-                        continue
+                # Preferred pool
+                preferred_pool = [
+                    c for c in pool if c.course_code in preferences_clean
+                ]
+
+                # Try to fill from preferred_pool
+                while len(chosen_list) < 2 and preferred_pool:
+                    c = rng.choice(preferred_pool)
+                    preferred_pool.remove(c)
+                    if c.course_code not in local_codes:
+                        chosen_list.append(c)
+                        local_codes.add(c.course_code)
+
+                # Fill remainder from general pool
+                if len(chosen_list) < 2:
+                    needed = 2 - len(chosen_list)
+                    fallback = [
+                        c for c in pool
+                        if c.course_code not in local_codes
+                    ]
+                    if len(fallback) < needed:
+                        restart = True
+                        break
+                    extra_choices = rng.sample(fallback, needed)
+                    for c in extra_choices:
+                        if c.course_code not in local_codes:
+                            chosen_list.append(c)
+                            local_codes.add(c.course_code)
+
+                if len(chosen_list) < 2:
+                    restart = True
+                    break
+
+                # Add them to the global plan
+                for c in chosen_list:
                     plan.append(c)
                     chosen_codes.add(c.course_code)
                     credits += c.num_credits
                     depth_extra.append(c)
+                    if c.course_code in preferences_clean:
+                        preferences_used.append(c.course_code)
 
-            # If we failed to get 2 extra in each depth area (4 total), restart
-            if len(depth_extra) < 4:
-                continue
+            if restart or len(depth_extra) < 4:
+                continue  # restart everything
 
-            # -------------------------------------------------
-            # 5. Fill randomly until exactly 10.0 credits
-            #    Here we can use ANY technical courses; the kernel/depth
-            #    constraints are already satisfied and only required areas
-            #    1–6.
-            # -------------------------------------------------
-            stuck_counter = 0
+            # =====================================================
+            # 5. Fill courses until exactly 10.0 credits
+            #    Prefer remaining preferred courses.
+            #    No repetition, no extra capstones.
+            # =====================================================
+            stuck = 0
 
             while credits < 10.0:
-                available = [c for c in self.courses if c.course_code not in chosen_codes]
+                available = [
+                    c for c in self.courses
+                    if c.course_code not in chosen_codes
+                    and c.course_code not in CourseConstants.CAPSTONE_CODES
+                ]
 
                 if not available:
-                    # No more new courses to pick → restart
-                    break
+                    break  # restart
 
-                candidate = rng.choice(available)
+                preferred_available = [
+                    c for c in available if c.course_code in preferences_clean
+                ]
 
-                # Try adding
-                new_credits = credits + candidate.num_credits
-                if new_credits > 10.0:
-                    stuck_counter += 1
-                    if stuck_counter > 50:
-                        # Give up on this attempt and restart entire construction
-                        break
+                candidate_pool = preferred_available if preferred_available else available
+                candidate = rng.choice(candidate_pool)
+
+                new_total = credits + candidate.num_credits
+                if new_total > 10.0:
+                    stuck += 1
+                    if stuck > 50:
+                        break  # restart
                     continue
 
-                # Accept candidate
+                # Accept
                 plan.append(candidate)
                 chosen_codes.add(candidate.course_code)
-                credits = new_credits
+                credits = new_total
 
-            if credits == 10.0:
-                # SUCCESS — return detailed dict
-                return {
-                    "courses": plan,  # list[Course], unique by course_code
-                    "total_credits": credits,
-                    "kernel_areas_selected": kernel_areas,
-                    "depth_areas_selected": depth_areas,
-                    "seed_used": seed,
-                }
+                if candidate.course_code in preferences_clean:
+                    preferences_used.append(candidate.course_code)
 
-            # Otherwise restart loop and try again
+            if credits != 10.0:
+                continue  # restart
+
+            # =====================================================
+            # SUCCESS
+            # =====================================================
+            preferences_skipped = [
+                code for code in preferences_clean if code not in preferences_used
+            ]
+
+            result = {
+                "courses": plan,
+                "total_credits": credits,
+                "kernel_areas_selected": kernel_areas,
+                "depth_areas_selected": depth_areas,
+                "preferences_requested": preferences_clean,
+                "preferences_used": preferences_used,
+                "preferences_skipped": preferences_skipped,
+                "seed_used": seed,
+            }
+
+            verifier = ConstraintVerifier(plan)
+            assert verifier.verify(), "Generated profile violates constraints!"
+
+            return result
 
     # -----------------------------------------------------
-    #  Helper utilities
+    # Helper utilities
     # -----------------------------------------------------
     def _find_course(self, code: str) -> Course | None:
         for c in self.courses:
@@ -222,45 +283,8 @@ class ProfileGenerator:
         return any(c.course_code == code for c in self.courses)
 
     def _group_kernel_courses_by_area(self) -> dict[int, list[Course]]:
-        """
-        Group kernel courses by area, but only for areas 1–6 (as per your rule).
-        """
         out: dict[int, list[Course]] = {}
         for c in self.courses:
             if c.kernel_course and 1 <= c.area <= 6:
                 out.setdefault(c.area, []).append(c)
         return out
-
-
-# ---------------------------------------------------------
-#  MAIN (manual test / demo)
-# ---------------------------------------------------------
-if __name__ == "__main__":
-    # Determine project structure:
-    # this file: backend/ProfileGenerator/profile_generator.py
-    # want: project_root/data/technical_courses.ods
-    current_file = os.path.abspath(__file__)
-    profile_gen_dir = os.path.dirname(current_file)
-    backend_dir = os.path.dirname(profile_gen_dir)
-    project_root = os.path.dirname(backend_dir)
-
-    data_dir = os.path.join(project_root, "data")
-    technical_courses_file = os.path.join(data_dir, "technical_courses.ods")
-
-    technical_courses = TechnicalCourseLoader.load_technical_courses(technical_courses_file)
-
-    gen = ProfileGenerator(technical_courses)
-
-    result = gen.generate_profile(seed=42)
-
-    verifier = ConstraintVerifier(result["courses"])
-    assert verifier.verify(), "Generated profile does not satisfy constraints!"
-
-    print("\nGenerated Profile (unique course codes):")
-    for c in result["courses"]:
-        print(" •", c.course_code)
-
-    print("\nTotal credits:", result["total_credits"])
-    print("Kernel areas:", result["kernel_areas_selected"])
-    print("Depth areas:", result["depth_areas_selected"])
-    print("Seed used:", result["seed_used"])

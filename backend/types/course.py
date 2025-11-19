@@ -1,5 +1,6 @@
 # backend/types/course.py
-from backend.CEAB_Attributes import CEABAttributes
+
+from backend.types.ceab_attributes import CEABAttributes
 
 class Course:
     """Represents a university course and its CEAB accreditation details."""

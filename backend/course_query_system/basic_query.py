@@ -1,3 +1,5 @@
+# backend/course_query_system/basic_query.py
+
 import argparse
 import pandas as pd
 from rapidfuzz import fuzz, process

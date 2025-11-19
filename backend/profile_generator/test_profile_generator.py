@@ -8,7 +8,7 @@ from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.profile_printer import ProfilePrinter
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.types.constants import CourseConstants
-from course_query_system.basic_query import load_course_details_index
+from backend.course_query_system.basic_query import load_course_details_index
 
 class TestProfileGenerator(unittest.TestCase):
 

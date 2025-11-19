@@ -1,3 +1,5 @@
+# backend/ranking_engine/rag_model.py
+
 from pathlib import Path
 import os
 import json
@@ -11,8 +13,8 @@ from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file if present
 
 # Config
-# data folder is in the parent of ranking_engine
-DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "courses_description.ods"
+# data folder is in the parent of backend which is parent of ranking_engine
+DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "courses_description.ods"
 CACHE_DIR = Path(".rag_cache")
 EMB_FILE = CACHE_DIR / "course_embeddings.npy"
 CODES_FILE = CACHE_DIR / "course_codes.npy"

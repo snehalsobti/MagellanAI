@@ -7,8 +7,8 @@ from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
 from backend.profile_generator.profile_printer import ProfilePrinter
-from course_query_system.basic_query import load_course_details_index
-from ranking_engine.rag_model import rag_model
+from backend.course_query_system.basic_query import load_course_details_index
+from backend.ranking_engine.rag_model import rag_model
 
 class TestFullFlow(unittest.TestCase):
 

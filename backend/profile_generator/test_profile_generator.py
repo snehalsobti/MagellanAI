@@ -8,6 +8,7 @@ from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.profile_printer import ProfilePrinter
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.types.constants import CourseConstants
+from course_query_system.basic_query import load_course_details_index
 
 class TestProfileGenerator(unittest.TestCase):
 
@@ -19,8 +20,10 @@ class TestProfileGenerator(unittest.TestCase):
         backend_dir = os.path.dirname(profile_generator_dir)
         project_root = os.path.dirname(backend_dir)
 
-        data_path = os.path.join(project_root, "data", "technical_courses.ods")
-        cls.courses = TechnicalCourseLoader.load_technical_courses(data_path)
+        courses_description_data_path = os.path.join(project_root, "data", "courses_description.ods")
+        technical_courses_data_path = os.path.join(project_root, "data", "technical_courses.ods")
+        cls.courses = TechnicalCourseLoader.load_technical_courses(technical_courses_data_path)
+        cls.lookup = load_course_details_index(courses_description_data_path)
 
     def test_basic_generation(self):
         gen = ProfileGenerator(self.courses)
@@ -100,7 +103,8 @@ class TestProfileGenerator(unittest.TestCase):
 
         # Ensure printing works without errors
         try:
-            ProfilePrinter.print_profile(result)
+            printer = ProfilePrinter(self.lookup)
+            printer.print_profile(result)
         except Exception as e:
             self.fail(f"Pretty printer crashed: {e}")
 

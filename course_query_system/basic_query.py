@@ -28,6 +28,16 @@ def get_course_details(data, course_code):
 def filter_courses_by_term(data, term):
     return data[data['Term'] == term][['Course Code', 'Course Name', 'Term']]
 
+# Load course details indexed by course code for quick lookup
+def load_course_details_index(data_path):
+    df = load_dataset(data_path)
+    df = df.drop_duplicates(subset="Course Code")
+    # Build lookup dict
+    return {
+        row["Course Code"]: row["Course Name"]
+        for _, row in df.iterrows()
+    }
+
 # Handle CLI
 def handleCLI():
     parser = argparse.ArgumentParser(description="Course Search and Filtering System")

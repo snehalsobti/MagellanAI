@@ -7,6 +7,7 @@ from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
 from backend.profile_generator.profile_printer import ProfilePrinter
+from course_query_system.basic_query import load_course_details_index
 from ranking_engine.rag_model import rag_model
 
 class TestFullFlow(unittest.TestCase):
@@ -65,8 +66,11 @@ class TestFullFlow(unittest.TestCase):
         # ----------------------------------------
         # 4. Pretty-print the final schedule
         # ----------------------------------------
-        print("\n===== Final Generated Profile =====")
-        ProfilePrinter.print_profile(result)
+
+        lookup = load_course_details_index(data_path=self.data_path)
+        printer = ProfilePrinter(lookup)
+
+        printer.print_profile(result)
 
         self.assertTrue(ConstraintVerifier(result["courses"]).verify())
 

@@ -1,0 +1,8 @@
+langchain
+pandas
+odfpy
+sentence-transformers 
+numpy 
+scikit-learn
+openai
+dotenv

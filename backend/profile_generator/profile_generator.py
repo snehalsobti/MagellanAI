@@ -43,9 +43,11 @@ class ProfileGenerator:
 
         # Validate preferred codes
         available_codes = {c.course_code for c in self.courses}
-        invalid = [c for c in preferences_clean if c not in available_codes]
-        if invalid:
-            raise ValueError(f"Invalid preferred course codes: {invalid}")
+        preferences_invalid = [c for c in preferences_clean if c not in available_codes]
+
+        # Remove invalid prefs from the working preference list
+        if preferences_invalid:
+            preferences_clean = [c for c in preferences_clean if c in available_codes]
 
         # Main generation loop (may restart if we get stuck)
         while True:
@@ -250,16 +252,19 @@ class ProfileGenerator:
             # =====================================================
             # SUCCESS
             # =====================================================
-            preferences_skipped = [
-                code for code in preferences_clean if code not in preferences_used
-            ]
+
+            preferences_skipped = [c for c in preferences_clean if c not in preferences_used]
+            preferences_skipped = preferences_skipped + preferences_invalid
+
+            kernel_areas.sort()
+            depth_areas.sort()
 
             result = {
                 "courses": plan,
                 "total_credits": credits,
                 "kernel_areas_selected": kernel_areas,
                 "depth_areas_selected": depth_areas,
-                "preferences_requested": preferences_clean,
+                "preferences_requested": preferences,
                 "preferences_used": preferences_used,
                 "preferences_skipped": preferences_skipped,
                 "seed_used": seed,

@@ -13,8 +13,13 @@ class ProfilePrinter:
       • Metadata in separate lines
     """
 
-    @staticmethod
-    def print_profile(result: dict):
+    def __init__(self, course_name_lookup: dict[str, str]):
+        self.course_name_lookup = course_name_lookup
+
+    def get_name(self, code: str) -> str:
+        return self.course_name_lookup.get(code, "(Name unavailable)")
+
+    def print_profile(self, result: dict):
         courses: list[Course] = result["courses"]
         kernel_areas = result["kernel_areas_selected"]
         depth_areas = result["depth_areas_selected"]
@@ -35,7 +40,7 @@ class ProfilePrinter:
         ece472 = next((c for c in courses if c.course_code == "ECE472H1"), None)
         if ece472:
             print("ECE472H1 (Required):")
-            print(f" • {ece472.course_code}")
+            print(f" • {ece472.course_code} — {self.get_name(ece472.course_code)}")
             print()
 
         # ---------------------------------------------------------
@@ -47,7 +52,7 @@ class ProfilePrinter:
         )
         if capstone:
             print("Capstone (Required):")
-            print(f" • {capstone.course_code}")
+            print(f" • {capstone.course_code} — {self.get_name(capstone.course_code)}")
             print()
 
         # ---------------------------------------------------------
@@ -63,7 +68,7 @@ class ProfilePrinter:
 
             for c in print_courses:
                 tag = " (kernel)" if c.kernel_course else ""
-                print(f" • {c.course_code}{tag}")
+                print(f" • {c.course_code}{tag} — {self.get_name(c.course_code)}")
             print()
 
         # ---------------------------------------------------------
@@ -79,7 +84,7 @@ class ProfilePrinter:
             )
             for c in area_list:
                 tag = " (kernel)" if c.kernel_course else ""
-                print(f" • {c.course_code}{tag}")
+                print(f" • {c.course_code}{tag} — {self.get_name(c.course_code)}")
             print()
 
         # ---------------------------------------------------------

@@ -1,0 +1,7 @@
+{
+    "total_num_credits": 10.0,
+    "ece472_required": true,
+    "capstone_required": true,
+    "min_kernel_requirement": 4,
+    "min_depth_requirement": 2
+}

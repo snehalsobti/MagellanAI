@@ -21,7 +21,7 @@ def safe_merge_ods(file1, file2, output_file):
             print("These codes are in file2 but missing in file1:", missing_in_file1)
         if missing_in_file2:
             print("These codes are in file1 but missing in file2:", missing_in_file2)
-        print('Please run "python3 ScrapeAndStore.py --fix" before running this file again.')
+        print('Please run "python3 scrape_and_store.py --fix" before running this file again.')
         sys.exit(1)
 
     # Check Course Name consistency for common Course Codes

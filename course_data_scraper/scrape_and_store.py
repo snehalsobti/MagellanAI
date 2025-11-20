@@ -68,7 +68,7 @@ def scrape_and_save_descriptions(input_file, output_file, excluded_courses_file,
     
     # Create a list to store the course code, course name, and description
     course_data = []
-    course_codes_already_processed = set()
+    course_codes_already_processed = {}
 
     artsci_url = 'https://artsci.calendar.utoronto.ca/course'
     eng_url = 'https://engineering.calendar.utoronto.ca/course'
@@ -107,17 +107,26 @@ def scrape_and_save_descriptions(input_file, output_file, excluded_courses_file,
 
     for idx, row in df.iterrows():
         course_code = row['Course Code']
-        if course_code in course_codes_already_processed:
-            continue
-        course_codes_already_processed.add(course_code)
 
         if course_code in excluded_course_codes:
             print(f"Skipping {course_code} (part of excluded course codes)")
             if fix_input_discrepancies:
                 rows_to_drop.append(idx)
             continue
-        elif course_code == 'BME412H1':
+
+        if course_code in course_codes_already_processed:
+            course_name = course_codes_already_processed[course_code]['Course Name']
+            try:
+                assert(row['Course Name'] == course_name)
+            except:
+                print("Discrepancy found:", course_code, row['Course Name'], "----------", course_name)
+                if fix_input_discrepancies:
+                    df.at[row.name, 'Course Name'] = course_name
+            continue
+
+        if course_code == 'BME412H1':
             course_data.append(bme412_data_row)
+            course_codes_already_processed[course_code] = bme412_data_row
             continue
         
         if 'H1' in course_code or 'Y1' in course_code:
@@ -147,6 +156,7 @@ def scrape_and_save_descriptions(input_file, output_file, excluded_courses_file,
                 "Course Name": course_name,
                 "Description": description
             })
+            course_codes_already_processed[course_code] = course_data[-1]
         else:
             print(f"Skipping {course_code} (description not found)")
             if fix_input_discrepancies:

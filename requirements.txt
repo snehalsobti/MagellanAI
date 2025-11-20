@@ -5,4 +5,8 @@ sentence-transformers
 numpy 
 scikit-learn
 openai
-dotenv
+python-dotenv
+rapidfuzz
+openpyxl
+beautifulsoup4
+requests

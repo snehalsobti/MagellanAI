@@ -70,7 +70,7 @@ class ConstraintVerifier:
         kernel_areas = {c.area for c in self.courses if c.kernel_course}
 
         # Requirement: at least 4 kernel courses from 4 distinct areas
-        return len(kernel_areas) >= 4
+        return len(kernel_areas) >= self.constraints["min_kernel_requirement"]
 
     # ----------------------------------------------------------
     # 5. Depth requirement
@@ -99,6 +99,44 @@ class ConstraintVerifier:
                 depth_areas += 1
 
         return depth_areas >= min_depth
+    
+    # ----------------------------------------------------------
+    # 6. CEAB Accreditation Attributes
+    # ----------------------------------------------------------
+    def verify_ceab_requirements(self) -> dict:
+        """
+        Returns a dictionary of results for each CEAB attribute.
+        Key: Attribute Name, Value: (Boolean success, float deficit)
+        """
+        # Mapping: (JSON Required Key, JSON Preobtained Key, CEABAttributes property name, Display Name)
+        attr_mapping = [
+            ("ceab_total_au", "preobtained_total_au", "total_AU", "Total AU"),
+            ("ceab_math", "preobtained_math", "mathematics", "Math"),
+            ("ceab_ns", "preobtained_ns", "natural_science", "Natural Science"),
+            ("ceab_math_ns", "preobtained_math_ns", "math_and_science", "Math & NS"),
+            ("ceab_es", "preobtained_es", "engineering_science", "Eng Science"),
+            ("ceab_ed", "preobtained_ed", "engineering_design", "Eng Design"),
+            ("ceab_es_ed", "preobtained_es_ed", "eng_sci_and_design", "ES & ED"),
+            ("ceab_cs", "preobtained_cs", "complementary_studies", "Comp Studies"),
+        ]
+
+        results = {}
+        
+        for req_key, pre_key, obj_prop, label in attr_mapping:
+            # 1. Calculate the Net Requirement
+            target = self.constraints[req_key]
+            already_have = self.constraints[pre_key]
+            net_needed = max(0.0, target - already_have)
+
+            # 2. Sum up what the current courses provide
+            provided = sum(getattr(c.ceab, obj_prop) for c in self.courses)
+
+            # 3. Verify
+            is_ok = provided >= net_needed
+            deficit = max(0.0, net_needed - provided)
+            results[label] = (is_ok, deficit)
+
+        return results
 
     # ----------------------------------------------------------
     # Main verification function
@@ -118,6 +156,13 @@ class ConstraintVerifier:
         for name, result in checks:
             if not result:
                 print(f"❌ FAILED: {name}")
+                all_ok = False
+
+        # Run CEAB Checks
+        ceab_results = self.verify_ceab_requirements()
+        for label, (is_ok, deficit) in ceab_results.items():
+            if not is_ok:
+                print(f"❌ FAILED CEAB: {label} (Missing {deficit:.1f} AU)")
                 all_ok = False
 
         if all_ok:

@@ -3,14 +3,14 @@ class CEABAttributes:
     """Represents CEAB accreditation attribute breakdown for a course."""
 
     def __init__(self,
-                 total_AU: int = 0,
-                 mathematics: int = 0,
-                 natural_science: int = 0,
-                 math_and_science: int = 0,
-                 engineering_science: int = 0,
-                 engineering_design: int = 0,
-                 eng_sci_and_design: int = 0,
-                 complementary_studies: int = 0):
+                 total_AU: float = 0.0,
+                 mathematics: float = 0.0,
+                 natural_science: float = 0.0,
+                 math_and_science: float = 0.0,
+                 engineering_science: float = 0.0,
+                 engineering_design: float = 0.0,
+                 eng_sci_and_design: float = 0.0,
+                 complementary_studies: float = 0.0):
         self.total_AU = total_AU
         self.mathematics = mathematics
         self.natural_science = natural_science

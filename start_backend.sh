@@ -28,13 +28,10 @@ echo "Activating virtual environment..."
 source .venv/bin/activate
 
 # Check if Python dependencies are installed
-echo "Checking Python dependencies..."
-python -c "import fastapi, uvicorn, pandas" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "Installing Python dependencies..."
-    pip install -r requirements.txt
-    pip install -r requirements_api.txt
-fi
+echo "Installing Python dependencies..."
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+python -m pip install -r requirements_api.txt
 
 echo ""
 echo "Starting server on http://localhost:8000"

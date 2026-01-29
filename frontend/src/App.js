@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { GoogleLogin } from '@react-oauth/google';
+import { jwtDecode } from "jwt-decode";
 import './App.css';
 
 function App() {
@@ -7,6 +9,18 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState(null);
+
+  const [user, setUser] = useState(null);
+
+  const handleLoginSuccess = (credentialResponse) => {
+    const decoded = jwtDecode(credentialResponse.credential);
+    console.log('User:', decoded);
+    setUser(decoded);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -64,6 +78,26 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* Authentication Section */}
+      <div className="auth-wrapper">
+        {user ? (
+          <div className="user-profile">
+            <img src={user.picture} alt="User" className="user-avatar" />
+            <div className="user-info">
+              <span className="user-name">{user.name}</span>
+              <button onClick={handleLogout} className="logout-btn">Sign Out</button>
+            </div>
+          </div>
+        ) : (
+          <GoogleLogin
+            onSuccess={handleLoginSuccess}
+            onError={() => console.log('Login Failed')}
+            theme="filled_black"
+            shape="pill"
+          />
+        )}
+      </div>
+
       {/* Header */}
       <div className="header">
         <h1>MagellanAI</h1>

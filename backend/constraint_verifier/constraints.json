@@ -3,5 +3,21 @@
     "ece472_required": true,
     "capstone_required": true,
     "min_kernel_requirement": 4,
-    "min_depth_requirement": 2
+    "min_depth_requirement": 2,
+    "ceab_total_au" : 1870.0,
+    "ceab_math" : 214.5,
+    "ceab_ns" : 200.0,
+    "ceab_math_ns" : 462.0,
+    "ceab_es" : 247.5,
+    "ceab_ed" : 247.5,
+    "ceab_es_ed" : 990.0,
+    "ceab_cs" : 240.0,
+    "preobtained_total_au" : 1089.3,
+    "preobtained_math" : 255.7,
+    "preobtained_ns" : 181.1,
+    "preobtained_math_ns" : 436.8,
+    "preobtained_es" : 422.4,
+    "preobtained_ed" : 140,
+    "preobtained_es_ed" : 562.4,
+    "preobtained_cs" : 90.1
 }

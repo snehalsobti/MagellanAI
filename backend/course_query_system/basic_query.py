@@ -66,7 +66,7 @@ def handleCLI():
     args = parser.parse_args()
 
     # Set base directories
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Root project directory
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Root project directory
     DATA_DIR = os.path.join(BASE_DIR, 'data')  # Path to data folder
     file_path = os.path.join(DATA_DIR, 'courses.ods')
     dataset = load_dataset(file_path)

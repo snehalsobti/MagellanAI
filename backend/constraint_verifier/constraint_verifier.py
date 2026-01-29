@@ -7,7 +7,7 @@ from backend.types.constants import CourseConstants
 from backend.types.course import Course
 
 class ConstraintVerifier:
-    def __init__(self, courses, json_path=None):
+    def __init__(self, semester_courses: List[List[Course]], json_path=None):
         # Compute default JSON path relative to THIS file
         if json_path is None:
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -19,7 +19,9 @@ class ConstraintVerifier:
         with open(json_path, "r") as f:
             self.constraints = json.load(f)
 
-        self.courses = courses
+        self.semester_courses = semester_courses
+        # Flatten the list for existing credit and CEAB checks
+        self.courses = [course for semester in semester_courses for course in semester]
 
     # ----------------------------------------------------------
     # 1. Total Credits = required
@@ -139,6 +141,17 @@ class ConstraintVerifier:
         return results
 
     # ----------------------------------------------------------
+    # 7. Semester Structure Checks
+    # ----------------------------------------------------------
+    def verify_semester_count(self) -> bool:
+        # Constraint: Exactly 4 semesters (rows)
+        return len(self.semester_courses) == 4
+
+    def verify_courses_per_semester(self) -> bool:
+        # Constraint: Each semester has <= 6 courses
+        return all(len(semester) <= 6 for semester in self.semester_courses)
+
+    # ----------------------------------------------------------
     # Main verification function
     # ----------------------------------------------------------
     def verify(self) -> bool:
@@ -149,20 +162,22 @@ class ConstraintVerifier:
             ("Kernel Requirement", self.verify_kernel_requirement()),
             ("Depth Requirement", self.verify_depth_requirement()),
             ("No Repetition Requirement", self.verify_no_repetition()),
+            ("Semester Count (Exactly 4)", self.verify_semester_count()),
+            ("Course Load (<= 6 per semester)", self.verify_courses_per_semester()),
         ]
 
         all_ok = True
 
         for name, result in checks:
             if not result:
-                print(f"❌ FAILED: {name}")
+                print(f"Constraint Unsatisfied: {name}")
                 all_ok = False
 
         # Run CEAB Checks
         ceab_results = self.verify_ceab_requirements()
         for label, (is_ok, deficit) in ceab_results.items():
             if not is_ok:
-                print(f"❌ FAILED CEAB: {label} (Missing {deficit:.1f} AU)")
+                print(f"Constraint Unsatisfied CEAB: {label} (Missing {deficit:.1f} AU)")
                 all_ok = False
 
         if all_ok:

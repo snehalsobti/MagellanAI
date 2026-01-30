@@ -515,7 +515,9 @@ body {
   }
   .semester-name {
     display: none; /* optional: hide names on mobile to reduce clutter */
-/* Authentication Styles */
+  }
+}
+    /* Authentication Styles */
 .auth-wrapper {
   position: absolute;
   top: 20px;

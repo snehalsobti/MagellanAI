@@ -176,7 +176,7 @@ function App() {
                     </div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-label">Kernel Areas</div>
+                    <div className="stat-label">Breadth Areas</div>
                     <div className="stat-value">{profile.kernel_areas_selected.join(', ')}</div>
                   </div>
                   <div className="stat-item">

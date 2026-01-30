@@ -4,10 +4,12 @@
   "private": true,
   "description": "MagellanAI Frontend - Intelligent Course Planning Assistant",
   "dependencies": {
+    "@react-oauth/google": "^0.13.4",
+    "axios": "^1.6.0",
+    "jwt-decode": "^4.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
-    "axios": "^1.6.0"
+    "react-scripts": "5.0.1"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -34,4 +36,3 @@
   },
   "proxy": "http://localhost:8000"
 }
-

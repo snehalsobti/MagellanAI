@@ -515,5 +515,68 @@ body {
   }
   .semester-name {
     display: none; /* optional: hide names on mobile to reduce clutter */
+/* Authentication Styles */
+.auth-wrapper {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  padding: 6px 12px 6px 6px;
+  border-radius: 30px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  border: 1px solid #e5e5e5;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid #ececf1;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.user-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #353740;
+  line-height: 1.2;
+}
+
+.logout-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.75rem;
+  color: #6e6e80;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.logout-btn:hover {
+  color: #dc2626;
+}
+
+/* Responsive fix for mobile */
+@media (max-width: 768px) {
+  .auth-wrapper {
+    position: relative;
+    top: auto;
+    right: auto;
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+    padding: 0 20px;
   }
 }

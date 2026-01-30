@@ -10,6 +10,8 @@
     "min_kernel_per_depth_area": 1,
     "min_courses_per_depth_area": 3,
 
+    "min_math_sci_courses": 1,
+
     "ceab_attributes_required": false,
 
     "ceab_total_au" : 1870.0,

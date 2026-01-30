@@ -72,7 +72,9 @@ class TestConstraintVerifier(unittest.TestCase):
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=60)),
             Course("ECE104H1", area=3, num_credits=1.0, kernel_course=True,
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=170)),
-            Course("ECE205H1", area=4, num_credits=1.0, kernel_course=True,
+            Course("ECE205H1", area=4, num_credits=0.5, kernel_course=True,
+                ceab=CEABAttributes(total_AU=80, eng_sci_and_design=60, math_and_science=30)),
+            Course("ECE305H1", area=7, num_credits=0.5, kernel_course=True,
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=60, math_and_science=30)),
             Course("ECE472H1", num_credits=1.0,
                 ceab=CEABAttributes(total_AU=80, complementary_studies=80)),
@@ -146,9 +148,12 @@ class TestConstraintVerifierExtended(unittest.TestCase):
         self.assertFalse(v.verify_semester_count())
 
     def test_course_load_overload(self):
-        self._print_header("Semester Structure")
+        self._print_header("Courses Overload")
         semesters = self.create_base_valid_semesters()
-        semesters[0] = [Course(f"T{i}", 0.1) for i in range(6)] # 6 courses in row 1
+        
+        # Force 7 courses to be absolutely sure we are over the limit of 6
+        semesters[0] = [Course(f"T{i}", 0.1) for i in range(7)] 
+        
         v = ConstraintVerifier(semesters)
         self.assertFalse(v.verify_courses_per_semester())
 
@@ -236,6 +241,25 @@ class TestConstraintVerifierExtended(unittest.TestCase):
         self._print_header("Breadth & Depth")
         self.assertTrue(ConstraintVerifier(self.create_base_valid_semesters()).verify_depth_requirement())
 
+    # --- Math & Science (2 tests) ---
+    def test_math_sci_pass(self):
+        self._print_header("Math & Science")
+        sem = self.create_base_valid_semesters()
+        v = ConstraintVerifier(sem, breadth_depth_codes=set())
+        v.constraints["min_math_sci_courses"] = 1
+        self.assertTrue(v.verify_math_sci_requirement())
+
+    def test_math_sci_fail_if_area7_used_in_breadth_depth(self):
+        self._print_header("Math & Science")
+        sem = self.create_base_valid_semesters()
+        # Find the area-7 course code
+        area7_codes = {c.course_code for s in sem for c in s if c.area == 7}
+        self.assertTrue(area7_codes)  # sanity
+
+        v = ConstraintVerifier(sem, breadth_depth_codes=area7_codes)
+        v.constraints["min_math_sci_courses"] = 1
+        self.assertFalse(v.verify_math_sci_requirement())
+
     # --- REPETITION & DYNAMIC (3 tests) ---
     def test_repetition_fail(self):
         self._print_header("Repetition & Dynamic")
@@ -248,16 +272,6 @@ class TestConstraintVerifierExtended(unittest.TestCase):
         v = ConstraintVerifier(self.create_base_valid_semesters())
         v.constraints["min_depth_areas"] = 10
         self.assertFalse(v.verify_depth_requirement())
-
-    def test_course_load_overload(self):
-        self._print_header("Courses Overload")
-        semesters = self.create_base_valid_semesters()
-        
-        # Force 7 courses to be absolutely sure we are over the limit of 6
-        semesters[0] = [Course(f"T{i}", 0.1) for i in range(7)] 
-        
-        v = ConstraintVerifier(semesters)
-        self.assertFalse(v.verify_courses_per_semester())
 
     def test_empty_verifier_fail(self):
         self._print_header("Repetition & Dynamic")

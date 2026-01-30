@@ -32,8 +32,9 @@ class ProfilePrinter:
         # ---------------------------------------------------------
         by_area: dict[int, list[Course]] = {}
         for c in courses:
-            if c.area != -1:
+            if c.area is not None and c.area != -1:
                 by_area.setdefault(c.area, []).append(c)
+
 
         # ---------------------------------------------------------
         # 1. Print ECE472H1 first

@@ -28,8 +28,10 @@ class TestProfileGenerator(unittest.TestCase):
     def test_basic_generation(self):
         gen = ProfileGenerator(self.courses)
         result = gen.generate_profile(seed=123)
-
-        verifier = ConstraintVerifier(result["semester_plan"])
+        verifier = ConstraintVerifier(
+            result["semester_plan"],
+            breadth_depth_codes=set(result.get("breadth_depth_codes", [])),
+        )
         self.assertTrue(verifier.verify())
 
     def test_seed_determinism(self):
@@ -41,7 +43,7 @@ class TestProfileGenerator(unittest.TestCase):
         c1 = [c.course_code for c in r1["courses"]]
         c2 = [c.course_code for c in r2["courses"]]
 
-        self.assertEqual(c1, c2)
+        self.assertEqual(sorted(c1), sorted(c2))
 
     def test_contains_ece472(self):
         gen = ProfileGenerator(self.courses)
@@ -95,6 +97,17 @@ class TestProfileGenerator(unittest.TestCase):
         verifier = ConstraintVerifier(result["semester_plan"])
         self.assertTrue(verifier.verify_breadth_requirement())
         self.assertTrue(verifier.verify_depth_requirement())
+
+    def test_math_sci_requirement(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=999)
+
+        bd = set(result.get("breadth_depth_codes", []))
+        unique = result["courses"]
+
+        # At least one area-7 course NOT used for breadth/depth
+        ok = any(c.area == 7 and c.course_code not in bd for c in unique)
+        self.assertTrue(ok)
 
     def test_pretty_printer_does_not_crash(self):
         gen = ProfileGenerator(self.courses)

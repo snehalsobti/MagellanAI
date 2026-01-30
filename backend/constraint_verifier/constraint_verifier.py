@@ -6,7 +6,7 @@ from backend.types.constants import CourseConstants
 from backend.types.course import Course
 
 class ConstraintVerifier:
-    def __init__(self, semester_courses: list[list[Course]], json_path=None):
+    def __init__(self, semester_courses: list[list[Course]], json_path=None, breadth_depth_codes: set[str] | None = None):
         # Compute default JSON path relative to THIS file
         if json_path is None:
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,6 +21,7 @@ class ConstraintVerifier:
         self.semester_courses = semester_courses
         # Flatten the list for existing credit and CEAB checks
         self.courses = self._unique_courses()
+        self.breadth_depth_codes = breadth_depth_codes or set()
 
     # ----------------------------------------------------------
     # 1. Total Credits = required
@@ -106,6 +107,18 @@ class ConstraintVerifier:
 
         return qualifying_depth_areas >= min_depth_areas
     
+    def verify_math_sci_requirement(self) -> bool:
+        min_needed = self.constraints.get("min_math_sci_courses", 0)
+        if min_needed <= 0:
+            return True
+
+        # IMPORTANT: must be a course NOT used for breadth/depth
+        count = sum(
+            1 for c in self.courses
+            if c.area == 7 and c.course_code not in self.breadth_depth_codes
+        )
+        return count >= min_needed
+
     # ----------------------------------------------------------
     # 6. CEAB Accreditation Attributes
     # ----------------------------------------------------------
@@ -165,6 +178,7 @@ class ConstraintVerifier:
             ("Capstone Required", self.verify_capstone()),
             ("Breadth Requirement", self.verify_breadth_requirement()),
             ("Depth Requirement", self.verify_depth_requirement()),
+            ("Math/Science (Area 7) Requirement", self.verify_math_sci_requirement()),
             ("No Repetition Requirement", self.verify_no_repetition()),
             ("Semester Count (Exactly 4)", self.verify_semester_count()),
             ("Course Load (<= 6 per semester)", self.verify_courses_per_semester()),

@@ -71,6 +71,7 @@ class ProfileGenerator:
 
             # Track chosen unique courses by code
             chosen_codes: set[str] = set()
+            breadth_depth_codes: set[str] = set()
             unique_courses: list[Course] = []
 
             # Credit tracking uses UNIQUE courses only
@@ -207,6 +208,7 @@ class ProfileGenerator:
                     restart = True
                     break
                 credits += kc.num_credits
+                breadth_depth_codes.add(kc.course_code)
 
             if restart:
                 continue
@@ -278,6 +280,7 @@ class ProfileGenerator:
                         restart = True
                         break
                     credits += c.num_credits
+                    breadth_depth_codes.add(c.course_code)
                     depth_extra_count += 1
 
                 if restart:
@@ -285,6 +288,54 @@ class ProfileGenerator:
 
             if restart or depth_extra_count != 4:
                 continue
+
+            # -----------------------------------------------------
+            # Step 4.5) Math/Science elective (Area 7) — pick at least 1
+            # Must NOT be a course used for breadth/depth.
+            # Must respect remaining_F / remaining_S.
+            # -----------------------------------------------------
+            min_math_sci = 1  # or load from constraints.json later
+
+            already_counted = sum(1 for c in unique_courses if c.area == 7 and c.course_code not in breadth_depth_codes)
+            needed = min_math_sci - already_counted
+
+            if needed > 0:
+                area7_pool = [
+                    c for c in self.courses
+                    if c.area == 7
+                    and c.term in ("F", "S")
+                    and c.course_code not in chosen_codes
+                    and c.course_code not in breadth_depth_codes
+                    and c.course_code not in CourseConstants.CAPSTONE_CODES
+                ]
+
+                # Must fit remaining term slots
+                area7_pool = [
+                    c for c in area7_pool
+                    if (c.term == "F" and remaining_F > 0) or (c.term == "S" and remaining_S > 0)
+                ]
+
+                if not area7_pool:
+                    continue  # restart
+
+                # prefer term with more remaining slots
+                preferred_term = "F" if remaining_F >= remaining_S else "S"
+                term_pref_pool = [c for c in area7_pool if c.term == preferred_term]
+                pick_pool = term_pref_pool if term_pref_pool else area7_pool
+
+                # preference bias
+                preferred_courses = [c for c in pick_pool if c.course_code in preferences_clean]
+                chosen = preferred_courses[0] if preferred_courses else rng.choice(pick_pool)
+
+                if chosen.term == "F":
+                    remaining_F -= 1
+                else:
+                    remaining_S -= 1
+
+                if not self._place_fs_course(chosen, semester_plan, chosen_codes, unique_courses, preferences_clean, preferences_used):
+                    continue
+
+                credits += chosen.num_credits
 
             # -----------------------------------------------------
             # Step 5) Fill remaining F slots first, then remaining S slots
@@ -351,6 +402,7 @@ class ProfileGenerator:
                 "semester_plan": semester_plan,          # 4x5 grid (capstone duplicated across 4F/4S)
                 "courses": unique_courses,               # unique courses (no duplicates)
                 "total_credits": credits,
+                "breadth_depth_codes": sorted(list(breadth_depth_codes)),
                 "kernel_areas_selected": kernel_areas,
                 "depth_areas_selected": depth_areas,
                 "preferences_requested": preferences,
@@ -360,7 +412,7 @@ class ProfileGenerator:
             }
 
             # Verifier: your updated verifier expects semester_courses (2D list)
-            verifier = ConstraintVerifier(semester_plan)
+            verifier = ConstraintVerifier(semester_plan, breadth_depth_codes=breadth_depth_codes)
             assert verifier.verify(), "Generated profile violates constraints!"
 
             return result

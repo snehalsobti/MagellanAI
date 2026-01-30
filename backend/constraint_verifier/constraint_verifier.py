@@ -2,12 +2,11 @@
 
 import json
 import os
-from typing import List
 from backend.types.constants import CourseConstants
 from backend.types.course import Course
 
 class ConstraintVerifier:
-    def __init__(self, semester_courses: List[List[Course]], json_path=None):
+    def __init__(self, semester_courses: list[list[Course]], json_path=None):
         # Compute default JSON path relative to THIS file
         if json_path is None:
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +27,7 @@ class ConstraintVerifier:
     # ----------------------------------------------------------
     def verify_total_credits(self) -> bool:
         total = sum(c.num_credits for c in self.courses)
-        return total == self.constraints["total_num_credits"]
+        return abs(total - self.constraints["total_num_credits"]) < 1e-6
     
     def verify_no_repetition(self) -> bool:
         seen = set()
@@ -65,42 +64,46 @@ class ConstraintVerifier:
 
 
     # ----------------------------------------------------------
-    # 4. Kernel count >= min_kernel_requirement
+    # 4. Breadth / Kernel requirement
+    #    "min_breadth_areas" distinct areas with at least
+    #    "min_kernel_per_breadth_area" kernel courses in each area
     # ----------------------------------------------------------
-    def verify_kernel_requirement(self) -> bool:
-        # Collect all areas where the student took a kernel course
-        kernel_areas = {c.area for c in self.courses if c.kernel_course}
+    def verify_breadth_requirement(self) -> bool:
+        min_breadth_areas = self.constraints["min_breadth_areas"]
+        min_kernel_per_area = self.constraints["min_kernel_per_breadth_area"]
 
-        # Requirement: at least 4 kernel courses from 4 distinct areas
-        return len(kernel_areas) >= self.constraints["min_kernel_requirement"]
+        area_map = self._courses_by_area()
+
+        qualifying_areas = 0
+        for area, clist in area_map.items():
+            kernel_count = sum(1 for c in clist if c.kernel_course)
+            if kernel_count >= min_kernel_per_area:
+                qualifying_areas += 1
+
+        return qualifying_areas >= min_breadth_areas
 
     # ----------------------------------------------------------
     # 5. Depth requirement
-    # A "depth-qualified" area must have:
-    #    - 1 kernel course in that area
-    #    - at least 2 other courses in that area
+    #    "min_depth_areas" areas must have:
+    #    - "min_kernel_per_depth_area" kernel courses AND
+    #    - "min_courses_per_depth_area" total courses
     # ----------------------------------------------------------
     def verify_depth_requirement(self) -> bool:
-        min_depth = self.constraints["min_depth_requirement"]
+        min_depth_areas = self.constraints["min_depth_areas"]
+        min_kernel_per_area = self.constraints["min_kernel_per_depth_area"]
+        min_courses_per_area = self.constraints["min_courses_per_depth_area"]
 
-        area_map = {}
-        for c in self.courses:
-            area_map.setdefault(c.area, []).append(c)
+        area_map = self._courses_by_area()
 
-        depth_areas = 0
-
+        qualifying_depth_areas = 0
         for area, clist in area_map.items():
-            # Must have a kernel in the area
-            kernel_here = any(c.kernel_course for c in clist)
-            if not kernel_here:
-                continue
+            kernel_count = sum(1 for c in clist if c.kernel_course)
+            total_count = len(clist)
 
-            # Must have >=2 non-kernel courses
-            other_course_count = sum(1 for c in clist)
-            if other_course_count >= 2:
-                depth_areas += 1
+            if kernel_count >= min_kernel_per_area and total_count >= min_courses_per_area:
+                qualifying_depth_areas += 1
 
-        return depth_areas >= min_depth
+        return qualifying_depth_areas >= min_depth_areas
     
     # ----------------------------------------------------------
     # 6. CEAB Accreditation Attributes
@@ -159,7 +162,7 @@ class ConstraintVerifier:
             ("Total Credits Requirement", self.verify_total_credits()),
             ("ECE472 Required", self.verify_ece472()),
             ("Capstone Required", self.verify_capstone()),
-            ("Kernel Requirement", self.verify_kernel_requirement()),
+            ("Breadth Requirement", self.verify_breadth_requirement()),
             ("Depth Requirement", self.verify_depth_requirement()),
             ("No Repetition Requirement", self.verify_no_repetition()),
             ("Semester Count (Exactly 4)", self.verify_semester_count()),
@@ -184,3 +187,15 @@ class ConstraintVerifier:
             print("✔ All constraints satisfied!")
 
         return all_ok
+
+    # -----------------------------------------------------
+    # Helper utilities
+    # -----------------------------------------------------
+    def _courses_by_area(self) -> dict[int, list]:
+        """Group courses by area, ignoring courses with no area."""
+        area_map: dict[int, list] = {}
+        for c in self.courses:
+            if c.area is None or c.area == -1:
+                continue
+            area_map.setdefault(c.area, []).append(c)
+        return area_map

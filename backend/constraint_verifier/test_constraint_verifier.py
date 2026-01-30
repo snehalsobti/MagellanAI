@@ -40,7 +40,7 @@ class TestConstraintVerifier(unittest.TestCase):
 
         expected_failures = [
             "Constraint Unsatisfied: Total Credits Requirement",
-            "Constraint Unsatisfied: Kernel Requirement",
+            "Constraint Unsatisfied: Breadth Requirement",
             "Constraint Unsatisfied: Depth Requirement",
             "Constraint Unsatisfied CEAB: Total AU (Missing 780.7 AU)",
             "Constraint Unsatisfied CEAB: Natural Science (Missing 18.9 AU)",
@@ -124,15 +124,17 @@ class TestConstraintVerifierExtended(unittest.TestCase):
     def create_base_valid_semesters(self):
         courses = [
             Course("C1", area=1, num_credits=1.0, kernel_course=True),
-            Course("C1_extra", area=1, num_credits=1.0),
+            Course("C1_extra_1", area=1, num_credits=1.0),
+            Course("C1_extra_2", area=1, num_credits=1.0),
             Course("C2", area=2, num_credits=1.0, kernel_course=True),
-            Course("C2_extra", area=2, num_credits=1.0),
+            Course("C2_extra_1", area=2, num_credits=1.0),
+            Course("C2_extra_2", area=2, num_credits=1.0),
             Course("C3", area=3, num_credits=1.0, kernel_course=True),
-            Course("C4", area=4, num_credits=1.0, kernel_course=True),
-            Course("ECE472H1", area=5, num_credits=1.0),
+            Course("C4", area=4, num_credits=0.5, kernel_course=True),
+            Course("ECE472H1", area=5, num_credits=0.5),
             Course("ECE496Y1", area=6, num_credits=1.0),
-            Course("C5", area=7, num_credits=1.0),
-            Course("C6", area=8, num_credits=1.0),
+            Course("C5", area=7, num_credits=0.5),
+            Course("C6", area=8, num_credits=0.5),
         ]
         return self._wrap(courses)
 
@@ -206,31 +208,31 @@ class TestConstraintVerifierExtended(unittest.TestCase):
         sem[0].append(Course("APS490Y1", 1.0))
         self.assertFalse(ConstraintVerifier(sem).verify_capstone())
 
-    # --- KERNEL & DEPTH (5 tests) ---
+    # --- BREADTH & DEPTH (5 tests) ---
     def test_kernel_distinct_fail(self):
-        self._print_header("Kernel & Depth")
+        self._print_header("Breadth & Depth")
         sem = self.create_base_valid_semesters()
         for s in sem: 
             for c in s: 
                 if c.kernel_course: c.area = 1
-        self.assertFalse(ConstraintVerifier(sem).verify_kernel_requirement())
+        self.assertFalse(ConstraintVerifier(sem).verify_breadth_requirement())
 
     def test_kernel_count_pass(self):
-        self._print_header("Kernel & Depth")
-        self.assertTrue(ConstraintVerifier(self.create_base_valid_semesters()).verify_kernel_requirement())
+        self._print_header("Breadth & Depth")
+        self.assertTrue(ConstraintVerifier(self.create_base_valid_semesters()).verify_breadth_requirement())
 
     def test_depth_missing_extra(self):
-        self._print_header("Kernel & Depth")
+        self._print_header("Breadth & Depth")
         sem = [[c for c in s if "_extra" not in c.course_code] for s in self.create_base_valid_semesters()]
         self.assertFalse(ConstraintVerifier(sem).verify_depth_requirement())
 
     def test_depth_no_kernel(self):
-        self._print_header("Kernel & Depth")
-        sem = self._wrap([Course("A", 1, 1.0, False), Course("B", 1, 1.0, False)])
+        self._print_header("Breadth & Depth")
+        sem = self._wrap([Course("A", 1, 1.0, kernel_course=False), Course("B", 1, 1.0, kernel_course=False)])
         self.assertFalse(ConstraintVerifier(sem).verify_depth_requirement())
 
     def test_depth_pass(self):
-        self._print_header("Kernel & Depth")
+        self._print_header("Breadth & Depth")
         self.assertTrue(ConstraintVerifier(self.create_base_valid_semesters()).verify_depth_requirement())
 
     # --- REPETITION & DYNAMIC (3 tests) ---
@@ -243,7 +245,7 @@ class TestConstraintVerifierExtended(unittest.TestCase):
     def test_dynamic_depth_mod(self):
         self._print_header("Repetition & Dynamic")
         v = ConstraintVerifier(self.create_base_valid_semesters())
-        v.constraints["min_depth_requirement"] = 10
+        v.constraints["min_depth_areas"] = 10
         self.assertFalse(v.verify_depth_requirement())
 
     def test_course_load_overload(self):

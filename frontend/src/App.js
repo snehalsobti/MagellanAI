@@ -136,8 +136,10 @@ function App() {
                     <div className="stat-value">{profile.total_credits}</div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-label">Total Courses</div>
-                    <div className="stat-value">{profile.courses.length}</div>
+                    <div className="stat-label">Semester Slots</div>
+                    <div className="stat-value">
+                      {profile.semester_plan ? profile.semester_plan.reduce((acc, r) => acc + (r.course_codes?.length || 0), 0) : 0}
+                    </div>
                   </div>
                   <div className="stat-item">
                     <div className="stat-label">Kernel Areas</div>
@@ -157,6 +159,12 @@ function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Semester Plan Grid */}
+              <SemesterPlanGrid
+                semesterPlan={profile.semester_plan}
+                courseNameByCode={Object.fromEntries(profile.courses.map(c => [c.course_code, c.course_name]))}
+              />
 
               {/* Required Courses */}
               {grouped.required.length > 0 && (
@@ -262,6 +270,59 @@ function CourseCard({ course }) {
         </div>
       </div>
       <div className="course-name">{course.course_name}</div>
+    </div>
+  );
+}
+
+function SemesterPlanGrid({ semesterPlan, courseNameByCode }) {
+  if (!semesterPlan || semesterPlan.length !== 4) return null;
+
+  const labels = ['3F', '3S', '4F', '4S'];
+
+  // Support either format:
+  //  A) semester_plan = [[{course_code,...}, ...], ...] (2D list of CourseInfo)
+  //  B) semester_plan = [{term:'3F', course_codes:[...]} , ...] (rows with codes)
+  const isRowObjects = !Array.isArray(semesterPlan[0]) && typeof semesterPlan[0] === 'object';
+
+  const rows = isRowObjects
+    ? labels.map((lab) => {
+        const row = semesterPlan.find((r) => r.term === lab);
+        const codes = row?.course_codes || [];
+        return codes.map((code) => ({ course_code: code, course_name: courseNameByCode[code] || 'Name not available' }));
+      })
+    : semesterPlan.map((row) =>
+        row.map((c) => ({ course_code: c.course_code, course_name: c.course_name || 'Name not available' }))
+      );
+
+  return (
+    <div className="semester-section">
+      <h3 className="section-title">Semester Plan</h3>
+
+      <div className="semester-grid">
+        {rows.map((row, rIdx) => (
+          <div className="semester-row" key={labels[rIdx]}>
+            <div className="semester-term">{labels[rIdx]}</div>
+
+            <div className="semester-row-cells">
+              {Array.from({ length: 5 }).map((_, cIdx) => {
+                const cell = row[cIdx];
+                return (
+                  <div className="semester-cell" key={`${labels[rIdx]}-${cIdx}`}>
+                    {cell ? (
+                      <>
+                        <div className="semester-code">{cell.course_code}</div>
+                        <div className="semester-name">{cell.course_name}</div>
+                      </>
+                    ) : (
+                      <div className="semester-empty">—</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

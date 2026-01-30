@@ -35,7 +35,6 @@ class ProfilePrinter:
             if c.area is not None and c.area != -1:
                 by_area.setdefault(c.area, []).append(c)
 
-
         # ---------------------------------------------------------
         # 1. Print ECE472H1 first
         # ---------------------------------------------------------

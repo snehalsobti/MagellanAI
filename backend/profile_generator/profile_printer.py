@@ -10,7 +10,8 @@ class ProfilePrinter:
       • Capstone
       • Depth areas (kernel first in each)
       • Other areas (kernel first)
-      • Metadata in separate lines
+      • Semester grid (4x5)
+      • Metadata
     """
 
     def __init__(self, course_name_lookup: dict[str, str]):
@@ -24,14 +25,14 @@ class ProfilePrinter:
         kernel_areas = result["kernel_areas_selected"]
         depth_areas = result["depth_areas_selected"]
 
-        print("\n==================== Generated Profile ====================\n")
+        print("\n==================== Generated Profile ==========================\n")
 
         # ---------------------------------------------------------
         # Group by area (ignore area == -1)
         # ---------------------------------------------------------
         by_area: dict[int, list[Course]] = {}
         for c in courses:
-            if c.area != -1:
+            if c.area is not None and c.area != -1:
                 by_area.setdefault(c.area, []).append(c)
 
         # ---------------------------------------------------------
@@ -40,7 +41,7 @@ class ProfilePrinter:
         ece472 = next((c for c in courses if c.course_code == "ECE472H1"), None)
         if ece472:
             print("ECE472H1 (Required):")
-            print(f" • {ece472.course_code} — {self.get_name(ece472.course_code)}")
+            print(f" • {ece472.course_code} - {self.get_name(ece472.course_code)}")
             print()
 
         # ---------------------------------------------------------
@@ -52,7 +53,7 @@ class ProfilePrinter:
         )
         if capstone:
             print("Capstone (Required):")
-            print(f" • {capstone.course_code} — {self.get_name(capstone.course_code)}")
+            print(f" • {capstone.course_code} - {self.get_name(capstone.course_code)}")
             print()
 
         # ---------------------------------------------------------
@@ -68,7 +69,7 @@ class ProfilePrinter:
 
             for c in print_courses:
                 tag = " (kernel)" if c.kernel_course else ""
-                print(f" • {c.course_code}{tag} — {self.get_name(c.course_code)}")
+                print(f" • {c.course_code}{tag} - {self.get_name(c.course_code)}")
             print()
 
         # ---------------------------------------------------------
@@ -84,13 +85,30 @@ class ProfilePrinter:
             )
             for c in area_list:
                 tag = " (kernel)" if c.kernel_course else ""
-                print(f" • {c.course_code}{tag} — {self.get_name(c.course_code)}")
+                print(f" • {c.course_code}{tag} - {self.get_name(c.course_code)}")
             print()
+
+        # ---------------------------------------------------------
+        # 5. Semester Grid (NEW)
+        # ---------------------------------------------------------
+        if "semester_plan" in result:
+            print("=========================== Semester Plan ======================")
+
+            labels = ["3F", "3S", "4F", "4S"]
+            semester_plan = result["semester_plan"]
+
+            for label, semester in zip(labels, semester_plan):
+                codes = [c.course_code for c in semester]
+                padded = codes + [""] * (5 - len(codes))  # safety
+                row = " | ".join(f"{c:<10}" for c in padded)
+                print(f"{label}: {row}")
+
+            print("================================================================\n")
 
         # ---------------------------------------------------------
         # Metadata
         # ---------------------------------------------------------
-        print("======================== Metadata ========================")
+        print("======================== Metadata ==============================")
         print(f"Total Credits: {result['total_credits']}")
         print(f"Kernel Areas Selected: {result['kernel_areas_selected']}")
         print(f"Depth Areas Selected: {result['depth_areas_selected']}")
@@ -98,4 +116,4 @@ class ProfilePrinter:
         print(f"Preferences Requested: {result['preferences_requested']}")
         print(f"Preferences Used: {result['preferences_used']}")
         print(f"Preferences Skipped: {result['preferences_skipped']}")
-        print("==========================================================\n")
+        print("================================================================\n")

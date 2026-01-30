@@ -38,7 +38,7 @@ class TestFullFlow(unittest.TestCase):
             "and advanced systems."
         )
         k = 10               # number of semantic chunks to retrieve
-        retrieval_k = None   # optional — not used for now
+        retrieval_k = None   # optional - not used for now
 
         # ----------------------------------------
         # 2. RAG model → list of course codes
@@ -72,7 +72,7 @@ class TestFullFlow(unittest.TestCase):
 
         printer.print_profile(result)
 
-        self.assertTrue(ConstraintVerifier(result["courses"]).verify())
+        self.assertTrue(ConstraintVerifier(result["semester_plan"]).verify())
 
 
 if __name__ == "__main__":

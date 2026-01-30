@@ -51,6 +51,11 @@ class UserInterestRequest(BaseModel):
     num_recommendations: int = 15
 
 
+class SemesterPlanRow(BaseModel):
+    term: str  # "3F", "3S", "4F", "4S"
+    course_codes: list[str]
+
+
 class CourseInfo(BaseModel):
     course_code: str
     course_name: str
@@ -63,6 +68,7 @@ class CourseInfo(BaseModel):
 class ProfileResponse(BaseModel):
     success: bool
     courses: list[CourseInfo]
+    semester_plan: list[SemesterPlanRow] = []
     total_credits: float
     kernel_areas_selected: list[int]
     depth_areas_selected: list[int]
@@ -119,11 +125,15 @@ async def generate_profile(request: UserInterestRequest):
             seed=None,  # Random each time
             preferences=recommended_courses
         )
-        print(f"[ProfileGen] Generated profile with {len(result['courses'])} courses")
-        
+        print(f"[ProfileGen] Generated profile with {len(result['courses'])} unique courses")
+        print(f"[ProfileGen] Semester plan slots: {sum(len(s) for s in result['semester_plan'])}")
+
         # Step 3: Constraint Verifier - Validate (already done in generator, but double-check)
         print("[Verifier] Validating constraints...")
-        verifier = ConstraintVerifier(result["courses"])
+        verifier = ConstraintVerifier(
+            result["semester_plan"],
+            breadth_depth_codes=set(result.get("breadth_depth_codes", [])),
+        )
         constraints_satisfied = verifier.verify()
         print(f"[Verifier] Constraints satisfied: {constraints_satisfied}")
         
@@ -139,10 +149,17 @@ async def generate_profile(request: UserInterestRequest):
                 kernel_course=course.kernel_course,
                 technical_elective=course.technical_elective
             ))
+
+        labels = ["3F", "3S", "4F", "4S"]
+        semester_plan_payload = [
+            SemesterPlanRow(term=labels[i], course_codes=[c.course_code for c in result["semester_plan"][i]])
+            for i in range(4)
+        ]
         
         return ProfileResponse(
             success=True,
             courses=courses_info,
+            semester_plan=semester_plan_payload,
             total_credits=result["total_credits"],
             kernel_areas_selected=result["kernel_areas_selected"],
             depth_areas_selected=result["depth_areas_selected"],

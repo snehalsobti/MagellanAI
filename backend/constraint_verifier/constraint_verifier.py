@@ -20,7 +20,7 @@ class ConstraintVerifier:
 
         self.semester_courses = semester_courses
         # Flatten the list for existing credit and CEAB checks
-        self.courses = [course for semester in semester_courses for course in semester]
+        self.courses = self._unique_courses()
 
     # ----------------------------------------------------------
     # 1. Total Credits = required
@@ -31,8 +31,9 @@ class ConstraintVerifier:
     
     def verify_no_repetition(self) -> bool:
         seen = set()
-        for c in self.courses:
-            if c.course_code in seen:
+        flattened_courses = [course for semester in self.semester_courses for course in semester]
+        for c in flattened_courses:
+            if c.course_code in seen and not c.course_code in CourseConstants.CAPSTONE_CODES:
                 return False
             seen.add(c.course_code)
         return True
@@ -177,11 +178,12 @@ class ConstraintVerifier:
                 all_ok = False
 
         # Run CEAB Checks
-        ceab_results = self.verify_ceab_requirements()
-        for label, (is_ok, deficit) in ceab_results.items():
-            if not is_ok:
-                print(f"Constraint Unsatisfied CEAB: {label} (Missing {deficit:.1f} AU)")
-                all_ok = False
+        if self.constraints.get("ceab_attributes_required", True):
+            ceab_results = self.verify_ceab_requirements()
+            for label, (is_ok, deficit) in ceab_results.items():
+                if not is_ok:
+                    print(f"Constraint Unsatisfied CEAB: {label} (Missing {deficit:.1f} AU)")
+                    all_ok = False
 
         if all_ok:
             print("✔ All constraints satisfied!")
@@ -199,3 +201,15 @@ class ConstraintVerifier:
                 continue
             area_map.setdefault(c.area, []).append(c)
         return area_map
+
+    def _unique_courses(self) -> list[Course]:
+        """Return one Course per course_code (first occurrence)."""
+        seen = set()
+        uniq = []
+        flattened_courses = [course for semester in self.semester_courses for course in semester]
+        for c in flattened_courses:
+            if c.course_code not in seen:
+                seen.add(c.course_code)
+                uniq.append(c)
+        return uniq
+

@@ -29,7 +29,7 @@ class TestProfileGenerator(unittest.TestCase):
         gen = ProfileGenerator(self.courses)
         result = gen.generate_profile(seed=123)
 
-        verifier = ConstraintVerifier(result["courses"])
+        verifier = ConstraintVerifier(result["semester_plan"])
         self.assertTrue(verifier.verify())
 
     def test_seed_determinism(self):
@@ -88,12 +88,12 @@ class TestProfileGenerator(unittest.TestCase):
         for u in used:
             self.assertIn(u, prefs)
 
-    def test_kernel_depth_constraints(self):
+    def test_breadth_depth_constraints(self):
         gen = ProfileGenerator(self.courses)
         result = gen.generate_profile(seed=77)
 
-        verifier = ConstraintVerifier(result["courses"])
-        self.assertTrue(verifier.verify_kernel_requirement())
+        verifier = ConstraintVerifier(result["semester_plan"])
+        self.assertTrue(verifier.verify_breadth_requirement())
         self.assertTrue(verifier.verify_depth_requirement())
 
     def test_pretty_printer_does_not_crash(self):

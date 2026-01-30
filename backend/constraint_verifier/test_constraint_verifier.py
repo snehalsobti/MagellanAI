@@ -31,6 +31,7 @@ class TestConstraintVerifier(unittest.TestCase):
         # Wrap into 4 semesters
         semesters = self._wrap_into_semesters(courses)
         verifier = ConstraintVerifier(semesters)
+        verifier.constraints["ceab_attributes_required"] = True
 
         with patch('sys.stdout', new=StringIO()) as fake_out:
             result = verifier.verify()
@@ -288,6 +289,7 @@ class TestCEABAccreditation(unittest.TestCase):
             Course("PHYS101", num_credits=1.0, ceab=CEABAttributes(total_AU=50, natural_science=50))
         ]
         v = ConstraintVerifier(self._wrap(courses))
+        v.constraints["ceab_attributes_required"] = True
         v.constraints.update({"ceab_math": 50, "preobtained_math": 0, 
                              "ceab_ns": 50, "preobtained_ns": 0, 
                              "ceab_math_ns": 150, "preobtained_math_ns": 0})
@@ -298,6 +300,7 @@ class TestCEABAccreditation(unittest.TestCase):
         self._print_header("CEAB Attribute Logic Tests")
         courses = [Course("C1", 1.0, ceab=CEABAttributes(total_AU=50, mathematics=50))]
         v = ConstraintVerifier(self._wrap(courses))
+        v.constraints["ceab_attributes_required"] = True
         v.constraints.update({"ceab_math": 50, "preobtained_math": 0, 
                              "ceab_total_au": 200, "preobtained_total_au": 0})
         results = v.verify_ceab_requirements()

@@ -172,7 +172,7 @@ def call_chatgpt_system(user_prompt: str, candidates_block: str, desired_k: int)
         try:
             import requests
         except Exception:
-            # No requests available either — raise a clear error including the original exception
+            # No requests available either - raise a clear error including the original exception
             raise RuntimeError(
                 "OpenAI package call failed and 'requests' is not available for fallback. "
                 f"OpenAI error: {e_openai}"

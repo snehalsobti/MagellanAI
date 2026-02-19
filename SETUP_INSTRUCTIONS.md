@@ -41,6 +41,36 @@ Starting MagellanAI API Server
 INFO:     Uvicorn running on http://0.0.0.0:8000
 ```
 
+### 2.5 Initialize the database (skip this step if magellan.db is already up to date)
+
+If `magellan.db` is already present and up to date in your repo, you can skip this step.
+
+```bash
+python3 -m backend.data_pipeline.cli init-db
+python3 -m backend.data_pipeline.cli migrate-from-legacy --data-dir data
+python3 -m backend.data_pipeline.cli validate
+```
+
+To add a new course directly to the DB (no ODS edits required):
+
+```bash
+python3 -m backend.data_pipeline.cli upsert-course \
+  --course-code ECE999H1 \
+  --term F \
+  --course-type technical \
+  --area 3 \
+  --kernel 0 \
+  --technical-elective 1 \
+  --free-elective 1 \
+  --math 0 --ns 0 --cs 0 --es 24 --ed 12
+```
+
+`upsert-course` behaves insert-first:
+- If `(course_code, term)` already exists, CLI reports it and makes no change.
+- For a new offering, CLI scrapes course name and description from UofT calendars.
+- If scraping fails, insertion is aborted with an error.
+- Use `--allow-update` only when you explicitly want to overwrite an existing offering.
+
 ---
 
 ## Frontend Setup

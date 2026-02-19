@@ -1,7 +1,9 @@
 # backend/profile_generator/technical_course_loader.py
 
 import pandas as pd
+from backend.data_bridge.interfaces import CatalogBridge
 from backend.types.course import Course
+from backend.types.ceab_attributes import CEABAttributes
 
 class TechnicalCourseLoader:
 
@@ -50,4 +52,34 @@ class TechnicalCourseLoader:
                 )
             )
 
+        return courses
+
+    @staticmethod
+    def load_technical_courses_from_bridge(bridge: CatalogBridge, include_excluded: bool = False) -> list[Course]:
+        records = bridge.get_technical_courses(include_excluded=include_excluded)
+        courses: list[Course] = []
+
+        for row in records:
+            ceab = CEABAttributes(
+                total_AU=int((row.math + row.ns + row.cs + row.es + row.ed)),
+                mathematics=int(row.math),
+                natural_science=int(row.ns),
+                math_and_science=int(row.math + row.ns),
+                engineering_science=int(row.es),
+                engineering_design=int(row.ed),
+                eng_sci_and_design=int(row.es + row.ed),
+                complementary_studies=int(row.cs),
+            )
+            courses.append(
+                Course(
+                    course_code=row.course_code,
+                    num_credits=TechnicalCourseLoader.get_num_credits(row.course_code),
+                    term=row.term,
+                    area=row.area,
+                    kernel_course=row.kernel_course,
+                    technical_elective=row.technical_elective,
+                    free_elective=row.free_elective,
+                    ceab=ceab,
+                )
+            )
         return courses

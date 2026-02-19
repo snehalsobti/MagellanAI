@@ -32,6 +32,8 @@ echo "OPENAI_API_KEY=your_openai_api_key_here" > .env
 
 **Option B: Manual start**
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements_api.txt
 python api_server.py

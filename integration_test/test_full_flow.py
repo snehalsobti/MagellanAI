@@ -2,27 +2,33 @@
 
 import unittest
 from pathlib import Path
+import tempfile
 
+from backend.data_bridge.adapters.sqlite_adapter import SQLiteCatalogAdapter
+from backend.data_pipeline.migrate_legacy import migrate_from_legacy
+from backend.data_pipeline.schema import init_db
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
 from backend.profile_generator.profile_printer import ProfilePrinter
-from backend.course_query_system.basic_query import load_course_details_index
 from backend.ranking_engine.rag_model import rag_model
 
 class TestFullFlow(unittest.TestCase):
 
-    def setUp(self):
-        """
-        Load course dataset once for all tests.
-        """
+    @classmethod
+    def setUpClass(cls):
         root = Path(__file__).resolve().parents[1] # Project root - parent of integration_test
-        data_path = root / "data" / "courses_description.ods"
+        cls._tmpdir = tempfile.TemporaryDirectory()
+        cls.db_path = Path(cls._tmpdir.name) / "test_magellan.db"
+        init_db(cls.db_path)
+        migrate_from_legacy(db_path=cls.db_path, data_dir=root / "data")
+        cls.bridge = SQLiteCatalogAdapter(cls.db_path)
+        cls.technical_courses = TechnicalCourseLoader.load_technical_courses_from_bridge(cls.bridge)
+        cls.lookup = cls.bridge.get_course_name_index()
 
-        self.data_path = data_path
-        self.technical_courses = TechnicalCourseLoader.load_technical_courses(
-            root / "data" / "technical_courses.ods"
-        )
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmpdir.cleanup()
 
     def test_rag_to_profile_generation(self):
         """
@@ -47,7 +53,7 @@ class TestFullFlow(unittest.TestCase):
             user_prompt=user_prompt,
             k=k,
             retrieval_k=retrieval_k,
-            data_path=self.data_path,
+            bridge=self.bridge,
         )
 
         print("\n===== RAG Model Output (Preferred Course Codes) =====")
@@ -67,8 +73,7 @@ class TestFullFlow(unittest.TestCase):
         # 4. Pretty-print the final schedule
         # ----------------------------------------
 
-        lookup = load_course_details_index(data_path=self.data_path)
-        printer = ProfilePrinter(lookup)
+        printer = ProfilePrinter(self.lookup)
 
         printer.print_profile(result)
 

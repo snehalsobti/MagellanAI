@@ -4,21 +4,22 @@ from pathlib import Path
 import os
 import json
 import re
+import hashlib
 import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import openai
 from dotenv import load_dotenv
+from backend.data_bridge.interfaces import CatalogBridge
 load_dotenv()  # Load environment variables from .env file if present
 
 # Config
-# data folder is in the parent of backend which is parent of ranking_engine
-DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "courses_description.ods"
 CACHE_DIR = Path(".rag_cache")
 EMB_FILE = CACHE_DIR / "course_embeddings.npy"
 CODES_FILE = CACHE_DIR / "course_codes.npy"
 TEXTS_FILE = CACHE_DIR / "course_texts.npy"
+FINGERPRINT_FILE = CACHE_DIR / "catalog_fingerprint.txt"
 MODEL_NAME = "all-MiniLM-L6-v2"
 MIN_K = 10
 MAX_K = 20
@@ -37,26 +38,14 @@ def get_model():
     return _model
 
 
-def read_courses(path: Path):
-    """
-    Read the ODS file and return a DataFrame with columns:
-    'Course Code', 'Course Name', 'Description'
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"{path} does not exist.")
-    try:
-        df = pd.read_excel(path, engine="odf")
-    except Exception:
-        df = pd.read_excel(path)
-    df.columns = [str(c).strip() for c in df.columns]
-    expected = ["Course Code", "Course Name", "Description"]
-    if not all(col in df.columns for col in expected):
-        raise ValueError(f"Expected columns {expected} in {path}, got {list(df.columns)}")
-    df = df.dropna(subset=["Course Code"])
-    df["Course Name"] = df["Course Name"].fillna("")
-    df["Description"] = df["Description"].fillna("")
-    df["Course Code"] = df["Course Code"].astype(str)
-    return df.reset_index(drop=True)
+def read_courses_from_bridge(bridge: CatalogBridge):
+    docs = bridge.get_rag_documents(active_only=True)
+    data = {
+        "Course Code": [d.course_code for d in docs],
+        "Course Name": [d.title for d in docs],
+        "Description": [d.body_text for d in docs],
+    }
+    return pd.DataFrame(data).reset_index(drop=True)
 
 
 def prepare_texts(df: pd.DataFrame):
@@ -65,19 +54,31 @@ def prepare_texts(df: pd.DataFrame):
     return texts
 
 
-def build_or_load_index(data_path: Path = DATA_PATH):
+def _get_fingerprint(bridge: CatalogBridge) -> str:
+    raw = f"bridge:{bridge.get_catalog_fingerprint()}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def build_or_load_index(bridge: CatalogBridge):
     """
-    Builds embeddings from the .ods file and caches them.
+    Builds embeddings from bridge documents and caches them.
     Returns: course_codes (list[str]), texts (list[str]), embeddings (np.ndarray)
     """
     CACHE_DIR.mkdir(exist_ok=True)
-    if EMB_FILE.exists() and CODES_FILE.exists() and TEXTS_FILE.exists():
+    current_fingerprint = _get_fingerprint(bridge)
+    cache_fingerprint = FINGERPRINT_FILE.read_text().strip() if FINGERPRINT_FILE.exists() else None
+    if (
+        EMB_FILE.exists()
+        and CODES_FILE.exists()
+        and TEXTS_FILE.exists()
+        and cache_fingerprint == current_fingerprint
+    ):
         embeddings = np.load(EMB_FILE)
         codes = np.load(CODES_FILE, allow_pickle=True).tolist()
         texts = np.load(TEXTS_FILE, allow_pickle=True).tolist()
         return codes, texts, embeddings
 
-    df = read_courses(data_path)
+    df = read_courses_from_bridge(bridge)
     texts = prepare_texts(df)
     codes = df["Course Code"].tolist()
     model = get_model()
@@ -85,10 +86,11 @@ def build_or_load_index(data_path: Path = DATA_PATH):
     np.save(EMB_FILE, embeddings)
     np.save(CODES_FILE, np.array(codes, dtype=object))
     np.save(TEXTS_FILE, np.array(texts, dtype=object))
+    FINGERPRINT_FILE.write_text(current_fingerprint)
     return codes, texts, embeddings
 
 
-def get_relevant_courses(user_prompt: str, k: int = 10, data_path: Path = DATA_PATH):
+def get_relevant_courses(user_prompt: str, k: int = 10, bridge: CatalogBridge | None = None):
     """
     Dense-retrieval: Given a prompt, return top-k course codes by embedding similarity.
     k is clamped to [MIN_K, MAX_K].
@@ -99,7 +101,9 @@ def get_relevant_courses(user_prompt: str, k: int = 10, data_path: Path = DATA_P
     k = int(k)
     k = max(MIN_K, min(MAX_K, k))
 
-    codes, texts, embeddings = build_or_load_index(data_path)
+    if bridge is None:
+        raise ValueError("CatalogBridge is required for get_relevant_courses")
+    codes, texts, embeddings = build_or_load_index(bridge)
     if len(codes) == 0:
         return []
 
@@ -206,7 +210,12 @@ def call_chatgpt_system(user_prompt: str, candidates_block: str, desired_k: int)
             raise RuntimeError(f"Unexpected OpenAI response structure: {j}") from e_parse
 
 
-def rag_model(user_prompt: str, k: int = 10, retrieval_k: int = None, data_path: Path = DATA_PATH):
+def rag_model(
+    user_prompt: str,
+    k: int = 10,
+    retrieval_k: int = None,
+    bridge: CatalogBridge | None = None,
+):
     """
     Full RAG pipeline:
       1. Dense-retrieval to get candidate courses (retrieval_k).
@@ -225,8 +234,11 @@ def rag_model(user_prompt: str, k: int = 10, retrieval_k: int = None, data_path:
     k = int(k)
     k = max(MIN_K, min(MAX_K, k))
 
+    if bridge is None:
+        raise ValueError("CatalogBridge is required for rag_model")
+
     # Load index
-    codes_all, texts_all, embeddings = build_or_load_index(data_path)
+    codes_all, texts_all, embeddings = build_or_load_index(bridge)
     if len(codes_all) == 0:
         return []
 

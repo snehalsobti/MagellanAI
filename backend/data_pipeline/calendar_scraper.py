@@ -7,9 +7,10 @@ def _calendar_prefixes_for_code(course_code: str) -> list[str]:
     utm_url = "https://utm.calendar.utoronto.ca/course"
     utsc_url = "https://utsc.calendar.utoronto.ca/course"
     sgs_url = "https://sgs.calendar.utoronto.ca/course"
+    music_url = "https://music.calendar.utoronto.ca/course"
 
     if "H1" in code or "Y1" in code:
-        return [eng_url, artsci_url]
+        return [eng_url, artsci_url, music_url]
     if "H3" in code:
         return [utsc_url]
     if "H5" in code:
@@ -42,8 +43,22 @@ def _scrape_from_prefix(course_code: str, prefix_url: str) -> tuple[str | None, 
         return None, None
 
     raw_name = course_name_tag.get_text(strip=True)
-    # UofT pages generally render "ECE318H1: Name", strip the prefix if present.
-    course_name = raw_name[10:] if len(raw_name) > 10 else raw_name
+    raw_name_lower = raw_name.lower()
+    # Some calendar pages return a placeholder like "This course is not in the current Calendar."
+    if "not in the current calendar" in raw_name_lower or raw_name_lower.startswith("page not found"):
+        return None, None
+
+    # UofT pages often render "ECE318H1: Name". Strip only when that prefix is present.
+    code_upper = course_code.upper()
+    raw_upper = raw_name.upper()
+    if raw_upper.startswith(code_upper):
+        # handle "CODE: Name" or "CODE - Name"
+        remainder = raw_name[len(code_upper) :].lstrip()
+        if remainder[:1] in {":", "-", "–", "—"}:
+            remainder = remainder[1:].lstrip()
+        course_name = remainder if remainder else raw_name
+    else:
+        course_name = raw_name
 
     url_keys = ["engineering", "utm"]
     parent_div_class = (
@@ -62,6 +77,11 @@ def _scrape_from_prefix(course_code: str, prefix_url: str) -> tuple[str | None, 
     )
     description_div = parent_div.find("div", class_=description_class)
     if not description_div:
+        # fallback: try a simpler pattern if page structure differs
+        body = main_content.find("div", class_="field__item")
+        if body:
+            txt = body.get_text(separator="\n").strip()
+            return course_name, txt if txt else None
         return course_name, None
 
     description_p = description_div.find("p")
@@ -73,6 +93,20 @@ def _scrape_from_prefix(course_code: str, prefix_url: str) -> tuple[str | None, 
 
 
 def scrape_course_name_and_description(course_code: str) -> tuple[str | None, str | None]:
+    # Known edge case: BME412H1 has inconsistent calendar HTML.
+    # Keep this fallback so insert/scrape does not hard-fail for this course.
+    if course_code.strip().upper() == "BME412H1":
+        return (
+            "Introduction to Biomolecular Engineering",
+            (
+                "Introduces the mechanics and dynamics of the operation of life at the molecular level by "
+                "teaching how to design new proteins, DNA, and RNA. Introduces the fundamentals of biomolecular "
+                "structure, function, thermodynamics, and kinetics. Covers a broad range of computational and "
+                "experimental techniques, including atomistic simulations, bioinformatics, machine learning, "
+                "high-throughput screening, and gene editing."
+            ),
+        )
+
     for prefix in _calendar_prefixes_for_code(course_code):
         name, description = _scrape_from_prefix(course_code, prefix)
         if name or description:

@@ -4,6 +4,7 @@ import pandas as pd
 from backend.data_bridge.interfaces import CatalogBridge
 from backend.types.course import Course
 from backend.types.ceab_attributes import CEABAttributes
+from backend.types.constants import CourseConstants
 
 class TechnicalCourseLoader:
 
@@ -82,4 +83,69 @@ class TechnicalCourseLoader:
                     ceab=ceab,
                 )
             )
+        return courses
+
+    @staticmethod
+    def load_profile_courses_from_bridge(bridge: CatalogBridge, include_excluded: bool = False) -> list[Course]:
+        """
+        ProfileGenerator requires:
+        - all technical offerings (for breadth/depth selection)
+        - required ECE472H1 (F/S offerings)
+        - capstone Y offerings
+        """
+        courses: list[Course] = []
+        seen: set[tuple[str, str]] = set()
+
+        def add_offering(code: str, term: str):
+            key = (code, term)
+            if key in seen:
+                return
+            offering = bridge.get_course_offering(code, term)
+            if offering is None:
+                return
+            # CEAB values are course-level in DB; map with derived fields.
+            math = float(offering.math or 0.0)
+            ns = float(offering.ns or 0.0)
+            cs = float(offering.cs or 0.0)
+            es = float(offering.es or 0.0)
+            ed = float(offering.ed or 0.0)
+            ceab = CEABAttributes(
+                total_AU=int(math + ns + cs + es + ed),
+                mathematics=int(math),
+                natural_science=int(ns),
+                math_and_science=int(math + ns),
+                engineering_science=int(es),
+                engineering_design=int(ed),
+                eng_sci_and_design=int(es + ed),
+                complementary_studies=int(cs),
+            )
+            courses.append(
+                Course(
+                    course_code=offering.course_code,
+                    num_credits=TechnicalCourseLoader.get_num_credits(offering.course_code),
+                    term=offering.term,
+                    area=offering.area if offering.area is not None else -1,
+                    kernel_course=bool(offering.kernel_course),
+                    technical_elective=bool(offering.technical_elective),
+                    free_elective=bool(offering.free_elective),
+                    ceab=ceab,
+                )
+            )
+            seen.add(key)
+
+        # 1) Technical offerings
+        for row in bridge.get_technical_courses(include_excluded=include_excluded):
+            add_offering(row.course_code, row.term)
+
+        # 2) Required ECE472H1 offerings (F/S)
+        for row in bridge.search_courses("ECE472H1", limit=20):
+            if row.course_code == "ECE472H1":
+                add_offering("ECE472H1", row.term)
+
+        # 3) Capstones (Y)
+        for cap in CourseConstants.CAPSTONE_CODES:
+            for row in bridge.search_courses(cap, limit=20):
+                if row.course_code == cap:
+                    add_offering(cap, row.term)
+
         return courses

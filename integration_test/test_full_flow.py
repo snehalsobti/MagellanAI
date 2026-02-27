@@ -2,11 +2,8 @@
 
 import unittest
 from pathlib import Path
-import tempfile
 
 from backend.data_bridge.adapters.sqlite_adapter import SQLiteCatalogAdapter
-from backend.data_pipeline.migrate_legacy import migrate_from_legacy
-from backend.data_pipeline.schema import init_db
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
@@ -17,18 +14,17 @@ class TestFullFlow(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        root = Path(__file__).resolve().parents[1] # Project root - parent of integration_test
-        cls._tmpdir = tempfile.TemporaryDirectory()
-        cls.db_path = Path(cls._tmpdir.name) / "test_magellan.db"
-        init_db(cls.db_path)
-        migrate_from_legacy(db_path=cls.db_path, data_dir=root / "data")
+        root = Path(__file__).resolve().parents[1]  # Project root - parent of integration_test
+        cls.db_path = root / "data" / "magellan.db"
+        if not cls.db_path.exists():
+            raise FileNotFoundError(
+                f"{cls.db_path} not found. Build it with: "
+                "python3 -m backend.data_pipeline.cli init-db && "
+                "python3 -m backend.data_pipeline.cli migrate-from-folders --data-dir data"
+            )
         cls.bridge = SQLiteCatalogAdapter(cls.db_path)
-        cls.technical_courses = TechnicalCourseLoader.load_technical_courses_from_bridge(cls.bridge)
+        cls.technical_courses = TechnicalCourseLoader.load_profile_courses_from_bridge(cls.bridge)
         cls.lookup = cls.bridge.get_course_name_index()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls._tmpdir.cleanup()
 
     def test_rag_to_profile_generation(self):
         """

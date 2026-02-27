@@ -47,7 +47,7 @@ If `magellan.db` is already present and up to date in your repo, you can skip th
 
 ```bash
 python3 -m backend.data_pipeline.cli init-db
-python3 -m backend.data_pipeline.cli migrate-from-legacy --data-dir data
+python3 -m backend.data_pipeline.cli migrate-from-folders --data-dir data
 python3 -m backend.data_pipeline.cli validate
 ```
 
@@ -161,10 +161,13 @@ pip install -r requirements_api.txt
 export OPENAI_API_KEY="sk-..."
 ```
 
-**"FileNotFoundError: courses.ods"**
+**"Data missing / DB not initialized"**
 ```bash
-# Make sure you're running from the project root
+# Make sure you're running from the project root and initialize DB
 cd MagellanAI
+python3 -m backend.data_pipeline.cli init-db
+python3 -m backend.data_pipeline.cli migrate-from-folders --data-dir data
+python3 -m backend.data_pipeline.cli scrape-missing-descriptions
 python api_server.py
 ```
 
@@ -234,9 +237,12 @@ MagellanAI/
 │   │   └── constraint_verifier.py # Validation
 │   └── course_query_system/
 ├── data/
-│   ├── courses.ods              # Full course dataset
-│   ├── technical_courses.ods    # Technical electives
-│   └── ...
+│   ├── magellan.db             # Canonical SQLite DB
+│   ├── course_codes/           # Course code source CSVs
+│   ├── term/                   # Term source CSVs
+│   ├── technical_classification/ # Technical area/kernel source CSVs
+│   ├── ceab/                   # CEAB source CSVs
+│   └── excluded_course_codes.csv
 └── integration_test/
 ```
 

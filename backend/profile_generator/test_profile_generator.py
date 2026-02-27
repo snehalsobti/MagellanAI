@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from backend.data_bridge.adapters.sqlite_adapter import SQLiteCatalogAdapter
-from backend.data_pipeline.migrate_legacy import migrate_from_legacy
+from backend.data_pipeline.migrate_from_folders import migrate_from_folders
 from backend.data_pipeline.schema import init_db
 from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
 from backend.profile_generator.profile_generator import ProfileGenerator
@@ -17,7 +17,7 @@ class TestProfileGenerator(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Build a temp SQLite DB from legacy files once for all tests."""
+        """Build a temp SQLite DB from data folders once for all tests."""
         current = os.path.abspath(__file__)
         profile_generator_dir = os.path.dirname(current)
         backend_dir = os.path.dirname(profile_generator_dir)
@@ -26,10 +26,10 @@ class TestProfileGenerator(unittest.TestCase):
         cls._tmpdir = tempfile.TemporaryDirectory()
         cls.db_path = os.path.join(cls._tmpdir.name, "test_magellan.db")
         init_db(cls.db_path)
-        migrate_from_legacy(db_path=cls.db_path, data_dir=os.path.join(project_root, "data"))
+        migrate_from_folders(db_path=cls.db_path, data_dir=os.path.join(project_root, "data"))
 
         cls.bridge = SQLiteCatalogAdapter(cls.db_path)
-        cls.courses = TechnicalCourseLoader.load_technical_courses_from_bridge(cls.bridge)
+        cls.courses = TechnicalCourseLoader.load_profile_courses_from_bridge(cls.bridge)
         cls.lookup = cls.bridge.get_course_name_index()
 
     @classmethod

@@ -44,15 +44,14 @@ CREATE TABLE IF NOT EXISTS course_classification (
 
 CREATE TABLE IF NOT EXISTS course_ceab (
     course_code TEXT NOT NULL,
-    term TEXT NOT NULL,
     math REAL,
     ns REAL,
     cs REAL,
     es REAL,
     ed REAL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (course_code, term),
-    FOREIGN KEY (course_code, term) REFERENCES course_offering(course_code, term) ON DELETE CASCADE
+    PRIMARY KEY (course_code),
+    FOREIGN KEY (course_code) REFERENCES course(course_code) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS course_source_snapshot (
@@ -79,6 +78,38 @@ def init_db(db_path: str | Path) -> None:
     conn = sqlite3.connect(path)
     try:
         conn.executescript(SCHEMA_SQL)
+        # Lightweight migration: if an old term-keyed course_ceab exists, collapse to course-level.
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(course_ceab)").fetchall()]
+        if "term" in cols:
+            conn.executescript(
+                """
+                PRAGMA foreign_keys = OFF;
+                ALTER TABLE course_ceab RENAME TO course_ceab_old;
+                CREATE TABLE course_ceab (
+                    course_code TEXT NOT NULL PRIMARY KEY,
+                    math REAL,
+                    ns REAL,
+                    cs REAL,
+                    es REAL,
+                    ed REAL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (course_code) REFERENCES course(course_code) ON DELETE CASCADE
+                );
+                INSERT INTO course_ceab(course_code, math, ns, cs, es, ed, updated_at)
+                SELECT
+                    course_code,
+                    MAX(math) AS math,
+                    MAX(ns) AS ns,
+                    MAX(cs) AS cs,
+                    MAX(es) AS es,
+                    MAX(ed) AS ed,
+                    MAX(updated_at) AS updated_at
+                FROM course_ceab_old
+                GROUP BY course_code;
+                DROP TABLE course_ceab_old;
+                PRAGMA foreign_keys = ON;
+                """
+            )
         conn.commit()
     finally:
         conn.close()

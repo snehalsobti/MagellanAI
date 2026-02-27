@@ -53,7 +53,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
                 JOIN course_classification cls
                   ON cls.course_code = o.course_code AND cls.term = o.term
                 LEFT JOIN course_ceab ceab
-                  ON ceab.course_code = o.course_code AND ceab.term = o.term
+                  ON ceab.course_code = o.course_code
                 WHERE cls.course_type = 'technical'
                   AND o.active = 1
             """
@@ -187,7 +187,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
             JOIN course_classification cls
               ON cls.course_code = o.course_code AND cls.term = o.term
             LEFT JOIN course_ceab ceab
-              ON ceab.course_code = o.course_code AND ceab.term = o.term
+              ON ceab.course_code = o.course_code
             WHERE o.active = 1
         """
         params: list[object] = []
@@ -247,7 +247,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
                 JOIN course_classification cls
                   ON cls.course_code = o.course_code AND cls.term = o.term
                 LEFT JOIN course_ceab ceab
-                  ON ceab.course_code = o.course_code AND ceab.term = o.term
+                  ON ceab.course_code = o.course_code
                 WHERE o.course_code = ? AND o.term = ?
                 """,
                 (course_code, term.upper()),
@@ -290,8 +290,8 @@ class SQLiteCatalogAdapter(CatalogBridge):
                 INSERT INTO course (course_code, name, description, active, updated_at)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(course_code) DO UPDATE SET
-                    name = excluded.name,
-                    description = excluded.description,
+                    name = COALESCE(NULLIF(excluded.name, ''), name),
+                    description = COALESCE(NULLIF(excluded.description, ''), description),
                     active = excluded.active,
                     updated_at = CURRENT_TIMESTAMP
                 """,
@@ -349,9 +349,9 @@ class SQLiteCatalogAdapter(CatalogBridge):
             conn.execute(
                 """
                 INSERT INTO course_ceab
-                    (course_code, term, math, ns, cs, es, ed, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(course_code, term) DO UPDATE SET
+                    (course_code, math, ns, cs, es, ed, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(course_code) DO UPDATE SET
                     math = excluded.math,
                     ns = excluded.ns,
                     cs = excluded.cs,
@@ -361,7 +361,6 @@ class SQLiteCatalogAdapter(CatalogBridge):
                 """,
                 (
                     payload.course_code,
-                    payload.term.upper(),
                     payload.math,
                     payload.ns,
                     payload.cs,
@@ -386,7 +385,6 @@ class SQLiteCatalogAdapter(CatalogBridge):
     def hard_remove_course(self, course_code: str, term: str) -> None:
         up_term = term.upper()
         with self._conn() as conn:
-            conn.execute("DELETE FROM course_ceab WHERE course_code = ? AND term = ?", (course_code, up_term))
             conn.execute(
                 "DELETE FROM course_classification WHERE course_code = ? AND term = ?",
                 (course_code, up_term),

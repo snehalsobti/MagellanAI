@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
 from pathlib import Path
 
 from backend.data_bridge.adapters.sqlite_adapter import SQLiteCatalogAdapter
 from backend.data_bridge.models import CourseOffering
 from backend.data_pipeline.calendar_scraper import scrape_course_name_and_description
-from backend.data_pipeline.migrate_legacy import migrate_from_legacy
+from backend.data_pipeline.migrate_from_folders import migrate_from_folders
+from backend.data_pipeline.scrape_descriptions import scrape_missing_descriptions
 from backend.data_pipeline.schema import init_db
 
 
@@ -19,18 +19,6 @@ def _default_data_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "data"
 
 
-def _run_legacy_scraper_pipeline(project_root: Path, fix: bool) -> None:
-    scripts_dir = project_root / "course_data_scraper"
-
-    commands: list[list[str]] = [
-        ["python3", str(scripts_dir / "csv_to_spreadsheet.py")],
-        ["python3", str(scripts_dir / "scrape_and_store.py")] + (["--fix"] if fix else []),
-        ["python3", str(scripts_dir / "merge_description_and_ceab.py")],
-    ]
-    for cmd in commands:
-        subprocess.run(cmd, cwd=project_root, check=True)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="MagellanAI data pipeline CLI")
     parser.add_argument("--db-path", default=str(_default_db_path()))
@@ -38,17 +26,26 @@ def main() -> None:
 
     subparsers.add_parser("init-db")
 
-    migrate_parser = subparsers.add_parser("migrate-from-legacy")
-    migrate_parser.add_argument("--data-dir", default=str(_default_data_dir()))
-
-    refresh_parser = subparsers.add_parser("refresh-legacy-artifacts")
-    refresh_parser.add_argument(
-        "--fix",
-        action="store_true",
-        help="Run scraper pipeline with in-place discrepancy fixing.",
-    )
+    migrate_folders_parser = subparsers.add_parser("migrate-from-folders")
+    migrate_folders_parser.add_argument("--data-dir", default=str(_default_data_dir()))
 
     subparsers.add_parser("validate")
+
+    scrape_parser = subparsers.add_parser("scrape-missing-descriptions")
+    scrape_parser.add_argument("--limit", type=int, default=None)
+    scrape_parser.add_argument("--include-excluded", action="store_true")
+    scrape_parser.add_argument("--delay-s", type=float, default=0.25)
+    scrape_parser.add_argument(
+        "--report-path",
+        default=None,
+        help="Optional CSV path to write failed course_code list.",
+    )
+    scrape_parser.add_argument(
+        "--only-code",
+        action="append",
+        default=None,
+        help="Repeatable. If provided, only scrape these codes.",
+    )
 
     upsert_parser = subparsers.add_parser("upsert-course")
     upsert_parser.add_argument("--course-code", required=True)
@@ -87,16 +84,10 @@ def main() -> None:
         print(f"Initialized database at {db_path}")
         return
 
-    if args.command == "migrate-from-legacy":
+    if args.command == "migrate-from-folders":
         init_db(db_path)
-        migrate_from_legacy(db_path=db_path, data_dir=Path(args.data_dir))
-        print(f"Migrated legacy files into {db_path}")
-        return
-
-    if args.command == "refresh-legacy-artifacts":
-        project_root = Path(__file__).resolve().parents[2]
-        _run_legacy_scraper_pipeline(project_root, fix=args.fix)
-        print("Refreshed legacy artifacts with course_data_scraper scripts")
+        migrate_from_folders(db_path=db_path, data_dir=Path(args.data_dir))
+        print(f"Migrated folder-based CSVs into {db_path}")
         return
 
     adapter = SQLiteCatalogAdapter(db_path=db_path)
@@ -109,6 +100,25 @@ def main() -> None:
                 print(f"- {issue}")
             raise SystemExit(1)
         print("Catalog validation passed")
+        return
+
+    if args.command == "scrape-missing-descriptions":
+        only = set([c.strip() for c in (args.only_code or []) if c and c.strip()]) or None
+        filled, failed, failed_codes = scrape_missing_descriptions(
+            db_path=db_path,
+            limit=args.limit,
+            include_excluded=args.include_excluded,
+            delay_s=float(args.delay_s),
+            only_codes=only,
+        )
+        print(f"Scrape complete. Filled: {filled}, Failed: {failed}")
+        if args.report_path and failed_codes:
+            p = Path(args.report_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("course_code\n" + "\n".join(failed_codes) + "\n")
+            print(f"Wrote failure report to {p}")
+        if failed:
+            raise SystemExit(1)
         return
 
     if args.command == "upsert-course":

@@ -37,7 +37,7 @@ try:
         print("Catalog validation issues detected:")
         for issue in issues:
             print(f" - {issue}")
-    technical_courses = TechnicalCourseLoader.load_technical_courses_from_bridge(catalog_bridge)
+    technical_courses = TechnicalCourseLoader.load_profile_courses_from_bridge(catalog_bridge)
     if not technical_courses:
         print("Warning: no technical courses found in catalog. Run data pipeline migration/upserts first.")
     course_lookup = load_course_details_index(bridge=catalog_bridge)

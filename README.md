@@ -32,8 +32,13 @@ echo "OPENAI_API_KEY=your_openai_api_key_here" > .env
 
 **Option B: Manual start**
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements_api.txt
+python3 -m backend.data_pipeline.cli init-db
+python3 -m backend.data_pipeline.cli migrate-from-folders --data-dir data
+python3 -m backend.data_pipeline.cli scrape-missing-descriptions
 python api_server.py
 ```
 
@@ -81,9 +86,12 @@ MagellanAI/
 │   └── course_query_system/
 │       └── basic_query.py           # Course search utilities
 ├── data/
-│   ├── courses.ods                  # Complete course dataset
-│   ├── technical_courses.ods        # Technical electives
-│   └── courses_description.ods      # Course descriptions
+│   ├── magellan.db                  # Canonical SQLite database
+│   ├── course_codes/                # Course-code source CSVs
+│   ├── term/                        # Offering term source CSVs
+│   ├── technical_classification/    # Technical area/kernel source CSVs
+│   ├── ceab/                        # CEAB source CSVs (course-level)
+│   └── excluded_course_codes.csv    # Excluded code list
 └── integration_test/
     └── test_full_flow.py            # End-to-end tests
 ```

@@ -1,29 +1,40 @@
 # backend/profile_generator/test_profile_generator.py
 
 import os
+import tempfile
 import unittest
 
+from backend.data_bridge.adapters.sqlite_adapter import SQLiteCatalogAdapter
+from backend.data_pipeline.migrate_from_folders import migrate_from_folders
+from backend.data_pipeline.schema import init_db
 from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
 from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.profile_printer import ProfilePrinter
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.types.constants import CourseConstants
-from backend.course_query_system.basic_query import load_course_details_index
 
 class TestProfileGenerator(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Load the technical_courses.ods once for all tests."""
+        """Build a temp SQLite DB from data folders once for all tests."""
         current = os.path.abspath(__file__)
         profile_generator_dir = os.path.dirname(current)
         backend_dir = os.path.dirname(profile_generator_dir)
         project_root = os.path.dirname(backend_dir)
 
-        courses_description_data_path = os.path.join(project_root, "data", "courses_description.ods")
-        technical_courses_data_path = os.path.join(project_root, "data", "technical_courses.ods")
-        cls.courses = TechnicalCourseLoader.load_technical_courses(technical_courses_data_path)
-        cls.lookup = load_course_details_index(courses_description_data_path)
+        cls._tmpdir = tempfile.TemporaryDirectory()
+        cls.db_path = os.path.join(cls._tmpdir.name, "test_magellan.db")
+        init_db(cls.db_path)
+        migrate_from_folders(db_path=cls.db_path, data_dir=os.path.join(project_root, "data"))
+
+        cls.bridge = SQLiteCatalogAdapter(cls.db_path)
+        cls.courses = TechnicalCourseLoader.load_profile_courses_from_bridge(cls.bridge)
+        cls.lookup = cls.bridge.get_course_name_index()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmpdir.cleanup()
 
     def test_basic_generation(self):
         gen = ProfileGenerator(self.courses)

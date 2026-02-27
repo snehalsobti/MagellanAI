@@ -1,44 +1,48 @@
 # backend/course_query_system/basic_query.py
 
 import argparse
-import pandas as pd
-from rapidfuzz import fuzz, process
-import os
+from backend.data_bridge.factory import get_catalog_bridge
+from backend.data_bridge.interfaces import CatalogBridge
 
-def load_dataset(file_path):
-    data = pd.read_excel(file_path, engine='odf')
-    return data
 
-# Search courses by keyword
-def find_courses_by_keyword(data, keyword, top_n=5):
-    name_and_descriptions = data['Course Name'] + ' ' + data['Description']
-    results = process.extract(keyword, name_and_descriptions, scorer=fuzz.partial_ratio, limit=top_n)
-    return [(data.loc[i[2]]['Course Code'], data.loc[i[2]]['Course Name'], i[1]) for i in results]
+def find_courses_by_keyword(bridge: CatalogBridge, keyword: str, top_n: int = 5):
+    rows = bridge.search_courses(keyword, limit=top_n)
+    return [(r.course_code, r.name or "", 100.0) for r in rows]
 
-# Filter courses by CEAB attribute
-def filter_courses_by_attribute(data, attribute, threshold):
-    return data[data[attribute] > threshold][['Course Code', 'Course Name', attribute]]
 
-# Get course details
-def get_course_details(data, course_code):
-    course = data[data['Course Code'] == course_code]
-    if not course.empty:
-        return course.iloc[0].to_dict()
+def filter_courses_by_attribute(bridge: CatalogBridge, attribute: str, threshold: float):
+    attr_map = {
+        "Math": {"min_math": threshold},
+        "NS": {"min_ns": threshold},
+        "CS": {"min_cs": threshold},
+        "ES": {"min_es": threshold},
+        "ED": {"min_ed": threshold},
+    }
+    if attribute not in attr_map:
+        raise ValueError(f"Unsupported CEAB attribute: {attribute}")
+    return bridge.filter_courses(**attr_map[attribute], limit=500)
+
+
+def get_course_details(bridge: CatalogBridge, course_code: str, term: str | None = None):
+    if term:
+        return bridge.get_course_offering(course_code, term)
+    # Fall back to first matching offering.
+    rows = bridge.search_courses(course_code, limit=50)
+    for row in rows:
+        if row.course_code == course_code:
+            return bridge.get_course_offering(course_code, row.term)
     return None
 
-# Filter courses by term
-def filter_courses_by_term(data, term):
-    return data[data['Term'] == term][['Course Code', 'Course Name', 'Term']]
 
-# Load course details indexed by course code for quick lookup
-def load_course_details_index(data_path):
-    df = load_dataset(data_path)
-    df = df.drop_duplicates(subset="Course Code")
-    # Build lookup dict
-    return {
-        row["Course Code"]: row["Course Name"]
-        for _, row in df.iterrows()
-    }
+def filter_courses_by_term(bridge: CatalogBridge, term: str):
+    return bridge.filter_courses(term=term.upper(), limit=500)
+
+
+def load_course_details_index(data_path: str | None = None, bridge: CatalogBridge | None = None):
+    del data_path  # no longer used; retained for backward compatibility
+    if bridge is None:
+        bridge = get_catalog_bridge()
+    return bridge.get_course_name_index()
 
 # Handle CLI
 def handleCLI():
@@ -64,33 +68,27 @@ def handleCLI():
     term_parser.add_argument('term', type=str, help="The term (e.g., 'F' for Fall) to filter courses by")
 
     args = parser.parse_args()
-
-    # Set base directories
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Root project directory
-    DATA_DIR = os.path.join(BASE_DIR, 'data')  # Path to data folder
-    file_path = os.path.join(DATA_DIR, 'courses.ods')
-    dataset = load_dataset(file_path)
-    no_duplicates_dataset = dataset.drop_duplicates(subset='Course Code')
+    bridge = get_catalog_bridge()
 
     # Execute the corresponding function based on the user's command
     if args.command == 'search':
-        results = find_courses_by_keyword(no_duplicates_dataset, args.keyword, args.top_n)
+        results = find_courses_by_keyword(bridge, args.keyword, args.top_n)
         for result in results:
             print(f"Course Code: {result[0]}, Course Name: {result[1]}, Score: {result[2]}")
 
     elif args.command == 'filter_attribute':
-        filtered_courses = filter_courses_by_attribute(no_duplicates_dataset, args.attribute, args.threshold)
+        filtered_courses = filter_courses_by_attribute(bridge, args.attribute, args.threshold)
         print(filtered_courses)
 
     elif args.command == 'details':
-        course_details = get_course_details(dataset, args.course_code)
+        course_details = get_course_details(bridge, args.course_code)
         if course_details:
             print(course_details)
         else:
             print(f"No details found for course code {args.course_code}")
 
     elif args.command == 'filter_term':
-        filtered_courses = filter_courses_by_term(dataset, args.term)
+        filtered_courses = filter_courses_by_term(bridge, args.term)
         print(filtered_courses)
 
     else:

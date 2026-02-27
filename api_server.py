@@ -13,6 +13,7 @@ project_root = Path(__file__).resolve().parent
 sys.path.insert(0, str(project_root))
 
 from backend.ranking_engine.rag_model import rag_model
+from backend.data_bridge.factory import get_catalog_bridge
 from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
@@ -29,18 +30,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load data once at startup
-DATA_DIR = project_root / "data"
-TECHNICAL_COURSES_PATH = DATA_DIR / "technical_courses.ods"
-COURSES_DESCRIPTION_PATH = DATA_DIR / "courses_description.ods"
-
 try:
-    technical_courses = TechnicalCourseLoader.load_technical_courses(str(TECHNICAL_COURSES_PATH))
-    course_lookup = load_course_details_index(str(COURSES_DESCRIPTION_PATH))
+    catalog_bridge = get_catalog_bridge()
+    issues = catalog_bridge.validate_catalog()
+    if issues:
+        print("Catalog validation issues detected:")
+        for issue in issues:
+            print(f" - {issue}")
+    technical_courses = TechnicalCourseLoader.load_profile_courses_from_bridge(catalog_bridge)
+    if not technical_courses:
+        print("Warning: no technical courses found in catalog. Run data pipeline migration/upserts first.")
+    course_lookup = load_course_details_index(bridge=catalog_bridge)
     profile_generator = ProfileGenerator(technical_courses)
     print("✓ Data loaded successfully")
 except Exception as e:
     print(f"Error loading data: {e}")
+    catalog_bridge = None
     technical_courses = []
     course_lookup = {}
     profile_generator = None
@@ -115,7 +120,7 @@ async def generate_profile(request: UserInterestRequest):
         recommended_courses = rag_model(
             user_prompt=request.interests,
             k=request.num_recommendations,
-            data_path=COURSES_DESCRIPTION_PATH
+            bridge=catalog_bridge,
         )
         print(f"[RAG] Recommended {len(recommended_courses)} courses: {recommended_courses[:5]}...")
         

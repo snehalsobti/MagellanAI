@@ -38,8 +38,7 @@ def filter_courses_by_term(bridge: CatalogBridge, term: str):
     return bridge.filter_courses(term=term.upper(), limit=500)
 
 
-def load_course_details_index(data_path: str | None = None, bridge: CatalogBridge | None = None):
-    del data_path  # no longer used; retained for backward compatibility
+def load_course_details_index(bridge: CatalogBridge | None = None):
     if bridge is None:
         bridge = get_catalog_bridge()
     return bridge.get_course_name_index()

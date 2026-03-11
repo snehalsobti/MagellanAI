@@ -69,3 +69,22 @@ class CatalogBridge(ABC):
     def get_catalog_fingerprint(self) -> str:
         pass
 
+    @abstractmethod
+    def get_profile_candidate_courses(
+        self,
+        *,
+        include_excluded: bool = False,
+        include_year1_year2: bool = True,
+        include_required: bool = True,
+    ) -> list[CourseSearchRow]:
+        pass
+
+    @abstractmethod
+    def get_courses_by_codes(
+        self,
+        course_codes: list[str],
+        *,
+        include_excluded: bool = False,
+    ) -> list[CourseSearchRow]:
+        pass
+

@@ -14,6 +14,8 @@ class CodeTags:
     is_technical: bool
     non_technical_type: str | None  # 'hss' | 'cs' | 'other' | None
     is_other_bucket: bool
+    is_year1_year2: bool
+    is_required: bool
 
 
 def _read_csv(path: Path) -> pd.DataFrame:
@@ -103,9 +105,17 @@ def _load_excluded(path: Path) -> set[str]:
 def _tags_for_code(code: str, by_file: dict[str, set[str]], technical_classification: dict[str, dict[str, object]]) -> CodeTags:
     is_technical = code in technical_classification or any(code in by_file.get("technical", set()) for _ in [0])
     is_other_bucket = code in by_file.get("others", set())
+    is_year1_year2 = code in by_file.get("year1_year2", set())
+    is_required = code in by_file.get("required", set())
 
     if is_technical:
-        return CodeTags(is_technical=True, non_technical_type=None, is_other_bucket=is_other_bucket)
+        return CodeTags(
+            is_technical=True,
+            non_technical_type=None,
+            is_other_bucket=is_other_bucket,
+            is_year1_year2=is_year1_year2,
+            is_required=is_required,
+        )
 
     # non-technical typing: use membership in course_codes buckets (filename-based)
     if any(code in by_file.get(stem, set()) for stem in by_file if "hss" in stem):
@@ -117,7 +127,13 @@ def _tags_for_code(code: str, by_file: dict[str, set[str]], technical_classifica
     else:
         nt = "other"
 
-    return CodeTags(is_technical=False, non_technical_type=nt, is_other_bucket=is_other_bucket)
+    return CodeTags(
+        is_technical=False,
+        non_technical_type=nt,
+        is_other_bucket=is_other_bucket,
+        is_year1_year2=is_year1_year2,
+        is_required=is_required,
+    )
 
 
 def migrate_from_folders(db_path: str | Path, data_dir: str | Path) -> None:
@@ -146,6 +162,7 @@ def migrate_from_folders(db_path: str | Path, data_dir: str | Path) -> None:
         tmeta = tech_class.get(code)
         ceab_vals = ceab.get(code, {"math": 0.0, "ns": 0.0, "cs": 0.0, "es": 0.0, "ed": 0.0})
 
+        auto_excluded_suffix = code.endswith("H3") or code.endswith("H5")
         payload = CourseOffering(
             course_code=code,
             term=term,
@@ -162,7 +179,9 @@ def migrate_from_folders(db_path: str | Path, data_dir: str | Path) -> None:
             kernel_course=bool(tmeta["kernel"]) if tmeta else False,
             technical_elective=tags.is_technical,
             free_elective=True,  # any course may be used as free elective by constraints later
-            is_excluded=code in excluded,
+            is_year1_year2=tags.is_year1_year2,
+            is_required=tags.is_required,
+            is_excluded=(code in excluded) or auto_excluded_suffix,
             active=True,
         )
         adapter.upsert_course_offering(payload, scrape_if_missing=False)

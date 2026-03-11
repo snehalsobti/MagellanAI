@@ -71,6 +71,8 @@ class InMemoryCatalogAdapter(CatalogBridge):
             kernel_course=row.kernel_course,
             technical_elective=row.technical_elective,
             free_elective=row.free_elective,
+            is_year1_year2=row.is_year1_year2,
+            is_required=row.is_required,
             is_excluded=row.is_excluded,
         )
 
@@ -163,4 +165,42 @@ class InMemoryCatalogAdapter(CatalogBridge):
 
     def get_catalog_fingerprint(self) -> str:
         return f"{len(self._rows)}:{self._touched_at}"
+
+    def get_profile_candidate_courses(
+        self,
+        *,
+        include_excluded: bool = False,
+        include_year1_year2: bool = True,
+        include_required: bool = True,
+    ) -> list[CourseSearchRow]:
+        out: list[CourseSearchRow] = []
+        for row in self._rows.values():
+            if not row.active:
+                continue
+            if row.is_excluded and not include_excluded:
+                continue
+            if not include_year1_year2 and row.is_year1_year2:
+                continue
+            if not include_required and row.is_required:
+                continue
+            out.append(self._to_search_row(row))
+        return sorted(out, key=lambda r: (r.course_code, r.term))
+
+    def get_courses_by_codes(
+        self,
+        course_codes: list[str],
+        *,
+        include_excluded: bool = False,
+    ) -> list[CourseSearchRow]:
+        cleaned = {c.strip().upper() for c in course_codes if c and c.strip()}
+        out: list[CourseSearchRow] = []
+        for row in self._rows.values():
+            if row.course_code not in cleaned:
+                continue
+            if not row.active:
+                continue
+            if row.is_excluded and not include_excluded:
+                continue
+            out.append(self._to_search_row(row))
+        return sorted(out, key=lambda r: (r.course_code, r.term))
 

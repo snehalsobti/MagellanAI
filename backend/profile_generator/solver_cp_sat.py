@@ -42,15 +42,26 @@ class GlobalCpSatProfileSolver:
             if c.term in ("F", "S")
             and not self.pool.is_excluded(c)
             and not self.pool.is_capstone(c)
+            and not bool(getattr(c, "is_year1_year2", False))
         ]
         if not noncap_offerings:
             return None
 
-        # Deduplicate by (code, term) in case of duplicates in source list.
+        # Deduplicate exact duplicates while preserving multi-area variants
+        # for the same (code, term), which are meaningful in constraints.
         seen = set()
         dedup: list[Course] = []
         for c in noncap_offerings:
-            key = (c.course_code, c.term)
+            key = (
+                c.course_code,
+                c.term,
+                c.area,
+                bool(getattr(c, "kernel_course", False)),
+                bool(getattr(c, "technical_elective", False)),
+                bool(getattr(c, "free_elective", False)),
+                getattr(c, "course_type", None),
+                getattr(c, "non_technical_type", None),
+            )
             if key in seen:
                 continue
             seen.add(key)

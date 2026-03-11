@@ -93,10 +93,10 @@ npm install
 
 ```bash
 # From frontend folder
-npm start
+npm run dev
 ```
 
-The app will open automatically at `http://localhost:3000`
+The app will open automatically at `http://localhost:5173`
 
 ---
 
@@ -180,8 +180,8 @@ python api_server.py
 
 **Port Already in Use**
 ```bash
-# Frontend (port 3000)
-npx kill-port 3000
+# Frontend (port 5173)
+npx kill-port 5173
 
 # Backend (port 8000)
 npx kill-port 8000
@@ -221,12 +221,11 @@ MagellanAI/
 ├── api_server.py                 # FastAPI backend server (NEW)
 ├── requirements.txt              # Base Python dependencies
 ├── requirements_api.txt          # API server dependencies (NEW)
-├── frontend/                     # React frontend (NEW)
-│   ├── public/
+├── frontend/                     # SvelteKit frontend
+│   ├── static/
 │   ├── src/
-│   │   ├── App.js               # Main React component
-│   │   ├── App.css              # Styles
-│   │   └── index.js             # Entry point
+│   │   ├── routes/              # Page routes
+│   │   └── lib/                 # Shared components and API modules
 │   └── package.json
 ├── backend/
 │   ├── ranking_engine/

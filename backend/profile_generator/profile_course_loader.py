@@ -34,10 +34,21 @@ class ProfileCourseLoader:
         Filtering by requirement role/category should happen in generator policy logic.
         """
         courses: list[Course] = []
-        seen: set[tuple[str, str]] = set()
+        # Keep multi-area variants for the same (course_code, term).
+        # They are needed for correct area-aware constraint solving.
+        seen: set[tuple[str, str, int, bool, bool, bool, str | None, str | None]] = set()
 
         def add_row(row):
-            key = (row.course_code, row.term)
+            key = (
+                row.course_code,
+                row.term,
+                (row.area if row.area is not None else -1),
+                bool(row.kernel_course),
+                bool(row.technical_elective),
+                bool(row.free_elective),
+                row.course_type,
+                row.non_technical_type,
+            )
             if key in seen:
                 return
             offering = bridge.get_course_offering(row.course_code, row.term)
@@ -75,7 +86,11 @@ class ProfileCourseLoader:
             )
             seen.add(key)
 
-        for row in bridge.get_profile_candidate_courses(include_excluded=include_excluded):
+        for row in bridge.get_profile_candidate_courses(
+            include_excluded=include_excluded,
+            include_year1_year2=False,
+            include_required=True,
+        ):
             add_row(row)
 
         return courses

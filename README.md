@@ -55,10 +55,10 @@ The backend will start on `http://localhost:8000`
 ```bash
 cd frontend
 npm install
-npm start
+npm run dev
 ```
 
-The frontend will open automatically at `http://localhost:3000`
+The frontend will open automatically at `http://localhost:5173`
 
 ### 4. Use the Application
 
@@ -71,10 +71,10 @@ The frontend will open automatically at `http://localhost:3000`
 ```
 MagellanAI/
 ├── api_server.py                     # FastAPI backend server
-├── frontend/                         # React web interface
+├── frontend/                         # SvelteKit web interface
 │   ├── src/
-│   │   ├── App.js                   # Main React component
-│   │   └── App.css                  # Styling
+│   │   ├── routes/                  # Route pages
+│   │   └── lib/                     # Shared components, types, API client
 │   └── package.json
 ├── backend/
 │   ├── ranking_engine/

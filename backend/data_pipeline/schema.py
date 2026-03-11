@@ -29,18 +29,19 @@ CREATE TABLE IF NOT EXISTS course_offering (
 );
 
 CREATE TABLE IF NOT EXISTS course_classification (
+    classification_id INTEGER PRIMARY KEY AUTOINCREMENT,
     course_code TEXT NOT NULL,
     term TEXT NOT NULL,
     course_type TEXT NOT NULL CHECK (course_type IN ('technical', 'non_technical')),
     non_technical_type TEXT CHECK (non_technical_type IN ('hss', 'cs', 'other') OR non_technical_type IS NULL),
-    area INTEGER,
+    area INTEGER NOT NULL DEFAULT -1,
     kernel_course INTEGER NOT NULL DEFAULT 0,
     technical_elective INTEGER NOT NULL DEFAULT 0,
     free_elective INTEGER NOT NULL DEFAULT 0,
     is_year1_year2 INTEGER NOT NULL DEFAULT 0,
     is_required INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (course_code, term),
+    UNIQUE (course_code, term, area),
     FOREIGN KEY (course_code, term) REFERENCES course_offering(course_code, term) ON DELETE CASCADE
 );
 
@@ -114,6 +115,50 @@ def init_db(db_path: str | Path) -> None:
             )
 
         cls_cols = {r[1] for r in conn.execute("PRAGMA table_info(course_classification)").fetchall()}
+        # Migration: preserve multi-area rows in course_classification.
+        if "classification_id" not in cls_cols:
+            conn.executescript(
+                """
+                PRAGMA foreign_keys = OFF;
+                ALTER TABLE course_classification RENAME TO course_classification_old;
+                CREATE TABLE course_classification (
+                    classification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    course_code TEXT NOT NULL,
+                    term TEXT NOT NULL,
+                    course_type TEXT NOT NULL CHECK (course_type IN ('technical', 'non_technical')),
+                    non_technical_type TEXT CHECK (non_technical_type IN ('hss', 'cs', 'other') OR non_technical_type IS NULL),
+                    area INTEGER NOT NULL DEFAULT -1,
+                    kernel_course INTEGER NOT NULL DEFAULT 0,
+                    technical_elective INTEGER NOT NULL DEFAULT 0,
+                    free_elective INTEGER NOT NULL DEFAULT 0,
+                    is_year1_year2 INTEGER NOT NULL DEFAULT 0,
+                    is_required INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (course_code, term, area),
+                    FOREIGN KEY (course_code, term) REFERENCES course_offering(course_code, term) ON DELETE CASCADE
+                );
+                INSERT OR IGNORE INTO course_classification(
+                    course_code, term, course_type, non_technical_type, area,
+                    kernel_course, technical_elective, free_elective, is_year1_year2, is_required, updated_at
+                )
+                SELECT
+                    course_code,
+                    term,
+                    course_type,
+                    non_technical_type,
+                    COALESCE(area, -1) AS area,
+                    kernel_course,
+                    technical_elective,
+                    free_elective,
+                    COALESCE(is_year1_year2, 0),
+                    COALESCE(is_required, 0),
+                    updated_at
+                FROM course_classification_old;
+                DROP TABLE course_classification_old;
+                PRAGMA foreign_keys = ON;
+                """
+            )
+            cls_cols = {r[1] for r in conn.execute("PRAGMA table_info(course_classification)").fetchall()}
         if "is_year1_year2" not in cls_cols:
             conn.execute(
                 "ALTER TABLE course_classification ADD COLUMN is_year1_year2 INTEGER NOT NULL DEFAULT 0"

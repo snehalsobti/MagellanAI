@@ -1,26 +1,23 @@
-# Dependencies
-/node_modules
-/.pnp
-.pnp.js
+node_modules
 
-# Testing
-/coverage
-
-# Production
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
 /build
 
-# Misc
+# OS
 .DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+Thumbs.db
 
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
 
-# Editor
-.vscode/
-.idea/
-
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

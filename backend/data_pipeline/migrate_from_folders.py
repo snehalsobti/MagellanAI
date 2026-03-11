@@ -80,16 +80,19 @@ def _load_ceab(ceab_dir: Path) -> dict[str, dict[str, float]]:
     return out
 
 
-def _load_technical_classification(path: Path) -> dict[str, dict[str, object]]:
+def _load_technical_classification(path: Path) -> dict[str, list[dict[str, object]]]:
     df = _read_csv(path)
     if not {"Course Code", "Area", "Kernel"} <= set(df.columns):
         raise ValueError(f"Expected Course Code,Area,Kernel in {path}, got {list(df.columns)}")
-    out: dict[str, dict[str, object]] = {}
+    out: dict[str, list[dict[str, object]]] = {}
     for _, r in df.iterrows():
         code = str(r["Course Code"]).strip()
         if not code or code.lower() == "nan":
             continue
-        out[code] = {"area": int(r["Area"]), "kernel": bool(int(r["Kernel"]))}
+        out.setdefault(code, [])
+        item = {"area": int(r["Area"]), "kernel": bool(int(r["Kernel"]))}
+        if item not in out[code]:
+            out[code].append(item)
     return out
 
 
@@ -102,7 +105,7 @@ def _load_excluded(path: Path) -> set[str]:
     return {c for c in codes if c and c.lower() != "nan"}
 
 
-def _tags_for_code(code: str, by_file: dict[str, set[str]], technical_classification: dict[str, dict[str, object]]) -> CodeTags:
+def _tags_for_code(code: str, by_file: dict[str, set[str]], technical_classification: dict[str, list[dict[str, object]]]) -> CodeTags:
     is_technical = code in technical_classification or any(code in by_file.get("technical", set()) for _ in [0])
     is_other_bucket = code in by_file.get("others", set())
     is_year1_year2 = code in by_file.get("year1_year2", set())
@@ -159,30 +162,55 @@ def migrate_from_folders(db_path: str | Path, data_dir: str | Path) -> None:
 
     for code, term in sorted(offerings):
         tags = _tags_for_code(code, by_file, tech_class)
-        tmeta = tech_class.get(code)
+        tmeta_list = tech_class.get(code, [])
         ceab_vals = ceab.get(code, {"math": 0.0, "ns": 0.0, "cs": 0.0, "es": 0.0, "ed": 0.0})
 
         auto_excluded_suffix = code.endswith("H3") or code.endswith("H5")
-        payload = CourseOffering(
-            course_code=code,
-            term=term,
-            name=None,
-            description=None,
-            math=ceab_vals["math"],
-            ns=ceab_vals["ns"],
-            cs=ceab_vals["cs"],
-            es=ceab_vals["es"],
-            ed=ceab_vals["ed"],
-            course_type="technical" if tags.is_technical else "non_technical",
-            non_technical_type=None if tags.is_technical else tags.non_technical_type,
-            area=int(tmeta["area"]) if tmeta else None,
-            kernel_course=bool(tmeta["kernel"]) if tmeta else False,
-            technical_elective=tags.is_technical,
-            free_elective=True,  # any course may be used as free elective by constraints later
-            is_year1_year2=tags.is_year1_year2,
-            is_required=tags.is_required,
-            is_excluded=(code in excluded) or auto_excluded_suffix,
-            active=True,
-        )
-        adapter.upsert_course_offering(payload, scrape_if_missing=False)
+        if tags.is_technical and tmeta_list:
+            for tmeta in tmeta_list:
+                payload = CourseOffering(
+                    course_code=code,
+                    term=term,
+                    name=None,
+                    description=None,
+                    math=ceab_vals["math"],
+                    ns=ceab_vals["ns"],
+                    cs=ceab_vals["cs"],
+                    es=ceab_vals["es"],
+                    ed=ceab_vals["ed"],
+                    course_type="technical",
+                    non_technical_type=None,
+                    area=int(tmeta["area"]),
+                    kernel_course=bool(tmeta["kernel"]),
+                    technical_elective=True,
+                    free_elective=True,  # any course may be used as free elective by constraints later
+                    is_year1_year2=tags.is_year1_year2,
+                    is_required=tags.is_required,
+                    is_excluded=(code in excluded) or auto_excluded_suffix,
+                    active=True,
+                )
+                adapter.upsert_course_offering(payload, scrape_if_missing=False)
+        else:
+            payload = CourseOffering(
+                course_code=code,
+                term=term,
+                name=None,
+                description=None,
+                math=ceab_vals["math"],
+                ns=ceab_vals["ns"],
+                cs=ceab_vals["cs"],
+                es=ceab_vals["es"],
+                ed=ceab_vals["ed"],
+                course_type="technical" if tags.is_technical else "non_technical",
+                non_technical_type=None if tags.is_technical else tags.non_technical_type,
+                area=None,
+                kernel_course=False,
+                technical_elective=tags.is_technical,
+                free_elective=True,
+                is_year1_year2=tags.is_year1_year2,
+                is_required=tags.is_required,
+                is_excluded=(code in excluded) or auto_excluded_suffix,
+                active=True,
+            )
+            adapter.upsert_course_offering(payload, scrape_if_missing=False)
 

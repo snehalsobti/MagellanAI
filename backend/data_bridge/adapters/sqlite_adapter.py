@@ -62,7 +62,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
             params: list[object] = []
             if not include_excluded:
                 query += " AND o.is_excluded = 0"
-            query += " ORDER BY o.course_code, o.term"
+            query += " ORDER BY o.course_code, o.term, cls.area"
             rows = list(conn.execute(query, params))
 
         return [
@@ -229,7 +229,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
             query += " AND COALESCE(ceab.ed, 0.0) >= ?"
             params.append(min_ed)
 
-        query += " ORDER BY o.course_code, o.term LIMIT ?"
+        query += " ORDER BY o.course_code, o.term, cls.area LIMIT ?"
         params.append(limit)
 
         with self._conn() as conn:
@@ -254,6 +254,8 @@ class SQLiteCatalogAdapter(CatalogBridge):
                 LEFT JOIN course_ceab ceab
                   ON ceab.course_code = o.course_code
                 WHERE o.course_code = ? AND o.term = ?
+                ORDER BY cls.kernel_course DESC, cls.area ASC
+                LIMIT 1
                 """,
                 (course_code, term.upper()),
             ).fetchone()
@@ -333,10 +335,9 @@ class SQLiteCatalogAdapter(CatalogBridge):
                     (course_code, term, course_type, non_technical_type, area, kernel_course,
                      technical_elective, free_elective, is_year1_year2, is_required, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(course_code, term) DO UPDATE SET
+                ON CONFLICT(course_code, term, area) DO UPDATE SET
                     course_type = excluded.course_type,
                     non_technical_type = excluded.non_technical_type,
-                    area = excluded.area,
                     kernel_course = excluded.kernel_course,
                     technical_elective = excluded.technical_elective,
                     free_elective = excluded.free_elective,
@@ -349,7 +350,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
                     payload.term.upper(),
                     payload.course_type,
                     payload.non_technical_type,
-                    payload.area,
+                    (payload.area if payload.area is not None else -1),
                     int(payload.kernel_course),
                     int(payload.technical_elective),
                     int(payload.free_elective),
@@ -479,7 +480,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
             query += " AND cls.is_year1_year2 = 0"
         if not include_required:
             query += " AND cls.is_required = 0"
-        query += " ORDER BY o.course_code, o.term"
+        query += " ORDER BY o.course_code, o.term, cls.area"
         with self._conn() as conn:
             rows = conn.execute(query).fetchall()
         return [self._search_row_from_record(r) for r in rows]
@@ -511,7 +512,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
         params: list[object] = cleaned
         if not include_excluded:
             query += " AND o.is_excluded = 0"
-        query += " ORDER BY o.course_code, o.term"
+        query += " ORDER BY o.course_code, o.term, cls.area"
         with self._conn() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._search_row_from_record(r) for r in rows]

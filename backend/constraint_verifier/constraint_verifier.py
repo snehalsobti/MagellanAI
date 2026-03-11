@@ -272,8 +272,7 @@ class ConstraintVerifier:
     # ----------------------------------------------------------
     def verify_ceab_requirements(self) -> dict:
         """
-        Returns a dictionary of results for each CEAB attribute.
-        Key: Attribute Name, Value: (Boolean success, float deficit)
+        Returns detailed CEAB results keyed by display label.
         """
         # Mapping: (JSON Required Key, JSON Preobtained Key, CEABAttributes property name, Display Name)
         attr_mapping = [
@@ -302,7 +301,12 @@ class ConstraintVerifier:
             # 3. Verify
             is_ok = provided >= net_needed
             deficit = max(0.0, net_needed - provided)
-            results[label] = (is_ok, deficit)
+            results[label] = {
+                "ok": bool(is_ok),
+                "required": float(net_needed),
+                "achieved": float(provided),
+                "deficit": float(deficit),
+            }
 
         return results
 
@@ -327,15 +331,26 @@ class ConstraintVerifier:
             checks.append((rule.name, bool(fn())))
         failed_checks = [name for name, ok in checks if not ok]
         ceab_failures = []
+        ceab_summary = []
         if self._get_constraint("ceab_attributes_required", True):
             ceab_results = self.verify_ceab_requirements()
-            for label, (is_ok, deficit) in ceab_results.items():
-                if not is_ok:
-                    ceab_failures.append({"label": label, "deficit": float(deficit)})
+            for label, details in ceab_results.items():
+                row = {
+                    "label": label,
+                    "required": float(details["required"]),
+                    "achieved": float(details["achieved"]),
+                    "delta": float(details["achieved"] - details["required"]),
+                    "ok": bool(details["ok"]),
+                }
+                ceab_summary.append(row)
+                if not details["ok"]:
+                    ceab_failures.append({"label": label, "deficit": float(details["deficit"])})
         return {
             "ok": len(failed_checks) == 0 and len(ceab_failures) == 0,
             "failed_checks": failed_checks,
             "ceab_failures": ceab_failures,
+            "ceab_summary": ceab_summary,
+            "requirement_buckets": self._build_requirement_buckets(),
         }
 
     def verify(self) -> bool:
@@ -446,4 +461,104 @@ class ConstraintVerifier:
                 seen.add(c.course_code)
                 uniq.append(c)
         return uniq
+
+    def _build_requirement_buckets(self) -> dict:
+        """
+        Build exclusive requirement buckets for UI display.
+        Breadth/depth overlap is represented through the shared kernel_depth bucket.
+        """
+        by_code: dict[str, Course] = {c.course_code: c for c in self.courses}
+        consumed_core = self._technical_requirement_consumed_codes() or set()
+
+        kernel_depth_by_area: dict[int, list[str]] = {}
+        kernel_depth_codes: set[str] = set()
+        science_math_from_core: list[str] = []
+        for code in sorted(consumed_core):
+            c = by_code.get(code)
+            if c is None:
+                continue
+            if c.area in (1, 2, 3, 4, 5, 6):
+                kernel_depth_by_area.setdefault(int(c.area), []).append(code)
+                kernel_depth_codes.add(code)
+            elif c.area == 7:
+                science_math_from_core.append(code)
+
+        # Only breadth/depth consumptions are pre-assigned.
+        # Science/Math should be selected after (1)/(2), not pre-consumed.
+        assigned = set(kernel_depth_codes)
+
+        def pick_codes(candidates: list[str], limit: int | None = None) -> list[str]:
+            out: list[str] = []
+            for code in sorted(set(candidates)):
+                if code in assigned:
+                    continue
+                out.append(code)
+                assigned.add(code)
+                if limit is not None and len(out) >= limit:
+                    break
+            return out
+
+        engineering_economics = pick_codes(
+            [c.course_code for c in self.courses if c.course_code == "ECE472H1"],
+            limit=1,
+        )
+        capstone = pick_codes(
+            [c.course_code for c in self.courses if self._is_capstone_course(c)],
+            limit=1,
+        )
+        min_math_sci = int(self._get_constraint("min_math_sci_courses", 1) or 1)
+        science_math_candidates = science_math_from_core + [
+            c.course_code
+            for c in self.courses
+            if c.area == 7
+            and not getattr(c, "is_required", False)
+            and not getattr(c, "is_year1_year2", False)
+            and c.course_code not in science_math_from_core
+        ]
+        science_math = pick_codes(science_math_candidates, limit=min_math_sci)
+        technical_electives = pick_codes(
+            [
+                c.course_code
+                for c in self.courses
+                if (bool(getattr(c, "technical_elective", False)) or c.course_type == "technical")
+                and not getattr(c, "is_required", False)
+                and not getattr(c, "is_year1_year2", False)
+                and c.course_code != "ECE472H1"
+            ],
+            limit=int(self._get_constraint("min_technical_elective_courses", 3) or 3),
+        )
+        hss_cs = pick_codes(
+            [
+                c.course_code
+                for c in self.courses
+                if (c.non_technical_type in ("hss", "cs"))
+                and not getattr(c, "is_required", False)
+                and not getattr(c, "is_year1_year2", False)
+            ],
+            limit=int(self._get_constraint("min_complementary_courses", 4) or 4),
+        )
+        free_elective = pick_codes(
+            [
+                c.course_code
+                for c in self.courses
+                if bool(getattr(c, "free_elective", False))
+                and not getattr(c, "is_required", False)
+                and not getattr(c, "is_year1_year2", False)
+                and c.term in ("F", "S")
+            ],
+            limit=int(self._get_constraint("min_free_elective_courses", 1) or 1),
+        )
+
+        return {
+            "kernel_depth_by_area": [
+                {"area": area, "course_codes": codes}
+                for area, codes in sorted(kernel_depth_by_area.items(), key=lambda x: x[0])
+            ],
+            "engineering_economics": engineering_economics,
+            "capstone": capstone,
+            "science_math": science_math,
+            "technical_electives": technical_electives,
+            "hss_cs": hss_cs,
+            "free_elective": free_elective,
+        }
 

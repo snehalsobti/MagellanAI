@@ -14,11 +14,16 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
+if [ ! -f ".env" ]; then
+    echo "Creating .env from .env.example"
+    cp .env.example .env
+fi
+
 echo ""
-echo "Starting React development server..."
-echo "The app will open at http://localhost:3000"
+echo "Starting Svelte development server..."
+echo "The app will open at http://localhost:5173"
 echo "Press Ctrl+C to stop"
 echo ""
 
-npm start
+npm run dev
 

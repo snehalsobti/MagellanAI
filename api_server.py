@@ -1,11 +1,14 @@
 # api_server.py
 # FastAPI server that connects frontend to backend pipeline
 
-from fastapi import FastAPI, HTTPException
+from collections import defaultdict, deque
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pathlib import Path
+import os
 import sys
+import time
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent
@@ -20,10 +23,15 @@ from backend.course_query_system.basic_query import load_course_details_index
 
 app = FastAPI(title="MagellanAI API")
 
-# Enable CORS for frontend
+# Enable CORS for frontend (env-configurable, not wildcard)
+allowed_origins_env = os.getenv("MAGELLAN_ALLOWED_ORIGINS", "")
+allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+if not allowed_origins:
+    allowed_origins = ["http://localhost:3000", "http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,8 +60,8 @@ except Exception as e:
 
 
 class UserInterestRequest(BaseModel):
-    interests: str
-    num_recommendations: int = 15
+    interests: str = Field(..., min_length=1, max_length=2000)
+    num_recommendations: int = Field(default=15, ge=1, le=30)
     year12_choice: str | None = None
 
 
@@ -65,10 +73,31 @@ class SemesterPlanRow(BaseModel):
 class CourseInfo(BaseModel):
     course_code: str
     course_name: str
+    course_description: str | None = None
     area: int
+    term: str | None = None
     num_credits: float
     kernel_course: bool
     technical_elective: bool
+    free_elective: bool = False
+    course_type: str | None = None
+    non_technical_type: str | None = None
+    ceab_math: float | None = None
+    ceab_ns: float | None = None
+    ceab_cs: float | None = None
+    ceab_es: float | None = None
+    ceab_ed: float | None = None
+
+
+class CourseSearchResponse(BaseModel):
+    success: bool
+    courses: list[CourseInfo]
+
+
+class Year12CoursesResponse(BaseModel):
+    success: bool
+    year12_choice: str
+    courses: list[str]
 
 
 class ProfileResponse(BaseModel):
@@ -87,6 +116,62 @@ class ProfileResponse(BaseModel):
     preference_weighted_score: int | None = None
     constraint_diagnostics: dict | None = None
     error: str = None
+
+
+class InMemoryRateLimiter:
+    def __init__(self, *, max_requests: int, window_seconds: int):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._buckets: dict[str, deque[float]] = defaultdict(deque)
+
+    def check(self, key: str) -> bool:
+        now = time.monotonic()
+        bucket = self._buckets[key]
+        cutoff = now - self.window_seconds
+        while bucket and bucket[0] < cutoff:
+            bucket.popleft()
+        if len(bucket) >= self.max_requests:
+            return False
+        bucket.append(now)
+        return True
+
+
+rate_limiter = InMemoryRateLimiter(max_requests=8, window_seconds=60)
+
+
+def _extract_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _to_course_info(course, details=None) -> CourseInfo:
+    name = "Name not available"
+    description = None
+    if details is not None:
+        name = details.name or name
+        description = details.description
+    return CourseInfo(
+        course_code=course.course_code,
+        course_name=name,
+        course_description=description,
+        area=course.area if course.area else -1,
+        term=getattr(course, "term", None),
+        num_credits=getattr(course, "num_credits", 0.5),
+        kernel_course=bool(getattr(course, "kernel_course", False)),
+        technical_elective=bool(getattr(course, "technical_elective", False)),
+        free_elective=bool(getattr(course, "free_elective", False)),
+        course_type=getattr(course, "course_type", None),
+        non_technical_type=getattr(course, "non_technical_type", None),
+        ceab_math=float(getattr(getattr(course, "ceab", None), "mathematics", 0.0) or 0.0),
+        ceab_ns=float(getattr(getattr(course, "ceab", None), "natural_science", 0.0) or 0.0),
+        ceab_cs=float(getattr(getattr(course, "ceab", None), "complementary_studies", 0.0) or 0.0),
+        ceab_es=float(getattr(getattr(course, "ceab", None), "engineering_science", 0.0) or 0.0),
+        ceab_ed=float(getattr(getattr(course, "ceab", None), "engineering_design", 0.0) or 0.0),
+    )
 
 
 @app.get("/")
@@ -110,22 +195,26 @@ async def health_check():
 
 
 @app.post("/generate-profile", response_model=ProfileResponse)
-async def generate_profile(request: UserInterestRequest):
+async def generate_profile(request: Request, payload: UserInterestRequest):
     """
     Main endpoint: Takes user interests, runs RAG → ProfileGenerator → Verifier
     """
     if not profile_generator:
         raise HTTPException(status_code=500, detail="Backend not initialized properly")
-    
-    if not request.interests or request.interests.strip() == "":
+
+    client_ip = _extract_client_ip(request)
+    if not rate_limiter.check(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again shortly.")
+
+    if not payload.interests or payload.interests.strip() == "":
         raise HTTPException(status_code=400, detail="Please provide your interests")
-    
+
     try:
         # Step 1: RAG Model - Get recommended courses based on interests
-        print(f"\n[RAG] Processing user interests: {request.interests[:100]}...")
+        print(f"\n[RAG] Processing user interests: {payload.interests[:100]}...")
         recommended_courses = rag_model(
-            user_prompt=request.interests,
-            k=request.num_recommendations,
+            user_prompt=payload.interests,
+            k=payload.num_recommendations,
             bridge=catalog_bridge,
         )
         print(f"[RAG] Recommended {len(recommended_courses)} courses: {recommended_courses[:5]}...")
@@ -135,28 +224,50 @@ async def generate_profile(request: UserInterestRequest):
         result = profile_generator.generate_profile(
             seed=None,  # Random each time
             preferences=recommended_courses,
-            year12_choice=request.year12_choice,
+            year12_choice=payload.year12_choice,
         )
         print(f"[ProfileGen] Generated profile with {len(result['courses'])} unique courses")
         print(f"[ProfileGen] Semester plan slots: {sum(len(s) for s in result['semester_plan'])}")
 
         # Step 3: Constraint Verifier - Validate (already done in generator, but double-check)
         print("[Verifier] Validating constraints...")
-        verifier = ConstraintVerifier(result["semester_plan"], year12_choice=request.year12_choice)
+        verifier = ConstraintVerifier(result["semester_plan"], year12_choice=payload.year12_choice)
         constraints_satisfied = verifier.verify()
         print(f"[Verifier] Constraints satisfied: {constraints_satisfied}")
         
         # Format response
+        details_by_code: dict[str, object] = {}
+        if catalog_bridge:
+            try:
+                detail_rows = catalog_bridge.get_courses_by_codes(
+                    [c.course_code for c in result["courses"]],
+                    include_excluded=True,
+                )
+                details_by_code = {row.course_code: row for row in detail_rows}
+            except Exception:
+                details_by_code = {}
+
         courses_info = []
         for course in result["courses"]:
-            course_name = course_lookup.get(course.course_code, "Name not available")
+            details = details_by_code.get(course.course_code)
+            course_name = (details.name if details and details.name else course_lookup.get(course.course_code, "Name not available"))
             courses_info.append(CourseInfo(
                 course_code=course.course_code,
                 course_name=course_name,
+                course_description=details.description if details else None,
                 area=course.area if course.area else -1,
+                term=course.term,
                 num_credits=course.num_credits,
                 kernel_course=course.kernel_course,
-                technical_elective=course.technical_elective
+                technical_elective=course.technical_elective,
+                free_elective=bool(getattr(course, "free_elective", False)),
+                course_type=getattr(course, "course_type", None),
+                non_technical_type=getattr(course, "non_technical_type", None),
+                ceab_math=float(getattr(course.ceab, "mathematics", 0.0)),
+                ceab_ns=float(getattr(course.ceab, "natural_science", 0.0)),
+                ceab_cs=float(getattr(course.ceab, "complementary_studies", 0.0)),
+                ceab_es=float(getattr(course.ceab, "engineering_science", 0.0)),
+                ceab_ed=float(getattr(course.ceab, "engineering_design", 0.0)),
             ))
 
         labels = ["3F", "3S", "4F", "4S"]
@@ -187,6 +298,106 @@ async def generate_profile(request: UserInterestRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generating profile: {str(e)}")
+
+
+@app.get("/year12-courses", response_model=Year12CoursesResponse)
+async def year12_courses(year12_choice: str = Query(default="ECE297H1")):
+    if not catalog_bridge:
+        raise HTTPException(status_code=500, detail="Backend not initialized properly")
+    rows = catalog_bridge.get_profile_candidate_courses(
+        include_excluded=False,
+        include_year1_year2=True,
+        include_required=True,
+    )
+    codes = sorted({r.course_code for r in rows if bool(getattr(r, "is_year1_year2", False))})
+    if year12_choice.upper() == "ECE295H1":
+        codes = [c for c in codes if c != "ECE297H1"]
+        if "ECE295H1" not in codes:
+            codes.append("ECE295H1")
+    else:
+        codes = [c for c in codes if c != "ECE295H1"]
+        if "ECE297H1" not in codes:
+            codes.append("ECE297H1")
+    return Year12CoursesResponse(success=True, year12_choice=year12_choice.upper(), courses=sorted(codes))
+
+
+@app.get("/courses", response_model=CourseSearchResponse)
+async def search_courses(
+    q: str | None = Query(default=None),
+    term: str | None = Query(default=None),
+    area: int | None = Query(default=None),
+    kernel_course: bool | None = Query(default=None),
+    technical_elective: bool | None = Query(default=None),
+    free_elective: bool | None = Query(default=None),
+    course_type: str | None = Query(default=None),
+    non_technical_type: str | None = Query(default=None),
+    min_math: float | None = Query(default=None),
+    min_ns: float | None = Query(default=None),
+    min_cs: float | None = Query(default=None),
+    min_es: float | None = Query(default=None),
+    min_ed: float | None = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=5000),
+):
+    if not catalog_bridge:
+        raise HTTPException(status_code=500, detail="Backend not initialized properly")
+
+    # Always build from filter_courses so query text composes with all filters.
+    rows = catalog_bridge.filter_courses(
+        term=term,
+        area=area,
+        kernel_course=kernel_course,
+        course_type=course_type,
+        non_technical_type=non_technical_type,
+        min_math=min_math,
+        min_ns=min_ns,
+        min_cs=min_cs,
+        min_es=min_es,
+        min_ed=min_ed,
+        include_excluded=False,
+        limit=limit,
+    )
+
+    if technical_elective is not None:
+        rows = [r for r in rows if bool(r.technical_elective) == technical_elective]
+    if free_elective is not None:
+        rows = [r for r in rows if bool(r.free_elective) == free_elective]
+
+    if q and q.strip():
+        needle = q.strip().lower()
+        rows = [
+            r for r in rows
+            if needle in r.course_code.lower()
+            or needle in (r.name or "").lower()
+            or needle in (r.description or "").lower()
+        ]
+
+    courses = []
+    for row in rows:
+        offering = catalog_bridge.get_course_offering(row.course_code, row.term)
+        if offering is None:
+            continue
+        courses.append(
+            CourseInfo(
+                course_code=offering.course_code,
+                course_name=offering.name or "Name not available",
+                course_description=offering.description,
+                area=offering.area if offering.area is not None else -1,
+                term=offering.term,
+                num_credits=0.5 if offering.term in ("F", "S") else 1.0,
+                kernel_course=bool(offering.kernel_course),
+                technical_elective=bool(offering.technical_elective),
+                free_elective=bool(offering.free_elective),
+                course_type=offering.course_type,
+                non_technical_type=offering.non_technical_type,
+                ceab_math=float(offering.math or 0.0),
+                ceab_ns=float(offering.ns or 0.0),
+                ceab_cs=float(offering.cs or 0.0),
+                ceab_es=float(offering.es or 0.0),
+                ceab_ed=float(offering.ed or 0.0),
+            )
+        )
+
+    return CourseSearchResponse(success=True, courses=courses[:limit])
 
 
 if __name__ == "__main__":

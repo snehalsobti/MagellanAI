@@ -7,9 +7,10 @@ import unittest
 from backend.data_bridge.adapters.sqlite_adapter import SQLiteCatalogAdapter
 from backend.data_pipeline.migrate_from_folders import migrate_from_folders
 from backend.data_pipeline.schema import init_db
-from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
+from backend.profile_generator.profile_course_loader import ProfileCourseLoader
 from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.profile_printer import ProfilePrinter
+from backend.profile_generator.solver_cp_sat import ORTOOLS_AVAILABLE
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.types.constants import CourseConstants
 
@@ -29,7 +30,7 @@ class TestProfileGenerator(unittest.TestCase):
         migrate_from_folders(db_path=cls.db_path, data_dir=os.path.join(project_root, "data"))
 
         cls.bridge = SQLiteCatalogAdapter(cls.db_path)
-        cls.courses = TechnicalCourseLoader.load_profile_courses_from_bridge(cls.bridge)
+        cls.courses = ProfileCourseLoader.load_profile_courses_from_bridge(cls.bridge)
         cls.lookup = cls.bridge.get_course_name_index()
 
     @classmethod
@@ -39,10 +40,7 @@ class TestProfileGenerator(unittest.TestCase):
     def test_basic_generation(self):
         gen = ProfileGenerator(self.courses)
         result = gen.generate_profile(seed=123)
-        verifier = ConstraintVerifier(
-            result["semester_plan"],
-            breadth_depth_codes=set(result.get("breadth_depth_codes", [])),
-        )
+        verifier = ConstraintVerifier(result["semester_plan"])
         self.assertTrue(verifier.verify())
 
     def test_seed_determinism(self):
@@ -112,13 +110,31 @@ class TestProfileGenerator(unittest.TestCase):
     def test_math_sci_requirement(self):
         gen = ProfileGenerator(self.courses)
         result = gen.generate_profile(seed=999)
-
-        bd = set(result.get("breadth_depth_codes", []))
         unique = result["courses"]
-
-        # At least one area-7 course NOT used for breadth/depth
-        ok = any(c.area == 7 and c.course_code not in bd for c in unique)
+        ok = any(c.area == 7 for c in unique)
         self.assertTrue(ok)
+
+    def test_complementary_and_free_requirements(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=1001)
+        unique = result["courses"]
+        comp = [
+            c for c in unique
+            if c.non_technical_type in ("hss", "cs")
+            and not c.is_required
+            and not c.is_year1_year2
+        ]
+        hss = [c for c in comp if c.non_technical_type == "hss"]
+        free = [
+            c for c in unique
+            if c.free_elective
+            and not c.is_required
+            and not c.is_year1_year2
+            and c.term in ("F", "S")
+        ]
+        self.assertGreaterEqual(len(comp), 4)
+        self.assertGreaterEqual(len(hss), 2)
+        self.assertGreaterEqual(len(free), 1)
 
     def test_pretty_printer_does_not_crash(self):
         gen = ProfileGenerator(self.courses)
@@ -131,6 +147,19 @@ class TestProfileGenerator(unittest.TestCase):
             printer.print_profile(result)
         except Exception as e:
             self.fail(f"Pretty printer crashed: {e}")
+
+    @unittest.skipUnless(ORTOOLS_AVAILABLE, "OR-Tools not installed")
+    def test_cp_sat_generation_path(self):
+        gen = ProfileGenerator(self.courses)
+        result = gen.generate_profile(seed=314, preferences=["ECE454H1", "ECE302H1", "ECE444H1"])
+        verifier = ConstraintVerifier(result["semester_plan"])
+        self.assertTrue(verifier.verify())
+        self.assertEqual(result.get("generation_engine"), "cp_sat")
+        self.assertIn("solver_runtime_ms", result)
+        self.assertIn("preference_hit_count", result)
+        self.assertIn("preference_weighted_score", result)
+        self.assertIn("constraint_diagnostics", result)
+        self.assertTrue(result["constraint_diagnostics"]["ok"])
 
 
 if __name__ == "__main__":

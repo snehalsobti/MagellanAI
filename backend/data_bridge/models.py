@@ -25,6 +25,8 @@ class CourseOffering:
     kernel_course: bool = False
     technical_elective: bool = False
     free_elective: bool = False
+    is_year1_year2: bool = False
+    is_required: bool = False
     is_excluded: bool = False
     active: bool = True
 
@@ -56,6 +58,8 @@ class CourseSearchRow:
     kernel_course: bool
     technical_elective: bool
     free_elective: bool
+    is_year1_year2: bool
+    is_required: bool
     is_excluded: bool
 
 

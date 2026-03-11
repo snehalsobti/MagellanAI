@@ -33,6 +33,8 @@ class SQLiteCatalogAdapter(CatalogBridge):
             kernel_course=bool(row["kernel_course"]),
             technical_elective=bool(row["technical_elective"]),
             free_elective=bool(row["free_elective"]),
+            is_year1_year2=bool(row["is_year1_year2"]),
+            is_required=bool(row["is_required"]),
             is_excluded=bool(row["is_excluded"]),
         )
 
@@ -140,6 +142,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
                     o.course_code, o.term, c.name, c.description,
                     cls.course_type, cls.non_technical_type, cls.area,
                     cls.kernel_course, cls.technical_elective, cls.free_elective,
+                    cls.is_year1_year2, cls.is_required,
                     o.is_excluded
                 FROM course_offering o
                 JOIN course c ON c.course_code = o.course_code
@@ -176,6 +179,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
                 o.course_code, o.term, c.name, c.description,
                 cls.course_type, cls.non_technical_type, cls.area,
                 cls.kernel_course, cls.technical_elective, cls.free_elective,
+                    cls.is_year1_year2, cls.is_required,
                 o.is_excluded,
                 COALESCE(ceab.math, 0.0) AS math,
                 COALESCE(ceab.ns, 0.0) AS ns,
@@ -241,6 +245,7 @@ class SQLiteCatalogAdapter(CatalogBridge):
                     c.name, c.description,
                     cls.course_type, cls.non_technical_type, cls.area,
                     cls.kernel_course, cls.technical_elective, cls.free_elective,
+                    cls.is_year1_year2, cls.is_required,
                     ceab.math, ceab.ns, ceab.cs, ceab.es, ceab.ed
                 FROM course_offering o
                 JOIN course c ON c.course_code = o.course_code
@@ -270,6 +275,8 @@ class SQLiteCatalogAdapter(CatalogBridge):
             kernel_course=bool(row["kernel_course"]),
             technical_elective=bool(row["technical_elective"]),
             free_elective=bool(row["free_elective"]),
+            is_year1_year2=bool(row["is_year1_year2"]),
+            is_required=bool(row["is_required"]),
             is_excluded=bool(row["is_excluded"]),
             active=bool(row["active"]),
         )
@@ -324,8 +331,8 @@ class SQLiteCatalogAdapter(CatalogBridge):
                 """
                 INSERT INTO course_classification
                     (course_code, term, course_type, non_technical_type, area, kernel_course,
-                     technical_elective, free_elective, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                     technical_elective, free_elective, is_year1_year2, is_required, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(course_code, term) DO UPDATE SET
                     course_type = excluded.course_type,
                     non_technical_type = excluded.non_technical_type,
@@ -333,6 +340,8 @@ class SQLiteCatalogAdapter(CatalogBridge):
                     kernel_course = excluded.kernel_course,
                     technical_elective = excluded.technical_elective,
                     free_elective = excluded.free_elective,
+                    is_year1_year2 = excluded.is_year1_year2,
+                    is_required = excluded.is_required,
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 (
@@ -344,6 +353,8 @@ class SQLiteCatalogAdapter(CatalogBridge):
                     int(payload.kernel_course),
                     int(payload.technical_elective),
                     int(payload.free_elective),
+                    int(payload.is_year1_year2),
+                    int(payload.is_required),
                 ),
             )
             conn.execute(
@@ -441,4 +452,67 @@ class SQLiteCatalogAdapter(CatalogBridge):
                 """
             ).fetchone()
         return f"{row['n_courses']}:{row['n_offerings']}:{row['last_updated'] or 'none'}"
+
+    def get_profile_candidate_courses(
+        self,
+        *,
+        include_excluded: bool = False,
+        include_year1_year2: bool = True,
+        include_required: bool = True,
+    ) -> list[CourseSearchRow]:
+        query = """
+            SELECT
+                o.course_code, o.term, c.name, c.description,
+                cls.course_type, cls.non_technical_type, cls.area,
+                cls.kernel_course, cls.technical_elective, cls.free_elective,
+                cls.is_year1_year2, cls.is_required,
+                o.is_excluded
+            FROM course_offering o
+            JOIN course c ON c.course_code = o.course_code
+            JOIN course_classification cls
+              ON cls.course_code = o.course_code AND cls.term = o.term
+            WHERE o.active = 1
+        """
+        if not include_excluded:
+            query += " AND o.is_excluded = 0"
+        if not include_year1_year2:
+            query += " AND cls.is_year1_year2 = 0"
+        if not include_required:
+            query += " AND cls.is_required = 0"
+        query += " ORDER BY o.course_code, o.term"
+        with self._conn() as conn:
+            rows = conn.execute(query).fetchall()
+        return [self._search_row_from_record(r) for r in rows]
+
+    def get_courses_by_codes(
+        self,
+        course_codes: list[str],
+        *,
+        include_excluded: bool = False,
+    ) -> list[CourseSearchRow]:
+        cleaned = sorted({c.strip().upper() for c in course_codes if c and c.strip()})
+        if not cleaned:
+            return []
+        placeholders = ", ".join("?" for _ in cleaned)
+        query = f"""
+            SELECT
+                o.course_code, o.term, c.name, c.description,
+                cls.course_type, cls.non_technical_type, cls.area,
+                cls.kernel_course, cls.technical_elective, cls.free_elective,
+                cls.is_year1_year2, cls.is_required,
+                o.is_excluded
+            FROM course_offering o
+            JOIN course c ON c.course_code = o.course_code
+            JOIN course_classification cls
+              ON cls.course_code = o.course_code AND cls.term = o.term
+            WHERE o.active = 1
+              AND o.course_code IN ({placeholders})
+        """
+        params: list[object] = cleaned
+        if not include_excluded:
+            query += " AND o.is_excluded = 0"
+        query += " ORDER BY o.course_code, o.term"
+        with self._conn() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [self._search_row_from_record(r) for r in rows]
 

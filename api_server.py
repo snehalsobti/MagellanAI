@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
 import sys
-import os
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent
@@ -15,7 +14,7 @@ sys.path.insert(0, str(project_root))
 from backend.ranking_engine.rag_model import rag_model
 from backend.data_bridge.factory import get_catalog_bridge
 from backend.profile_generator.profile_generator import ProfileGenerator
-from backend.profile_generator.technical_course_loader import TechnicalCourseLoader
+from backend.profile_generator.profile_course_loader import ProfileCourseLoader
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.course_query_system.basic_query import load_course_details_index
 
@@ -37,16 +36,17 @@ try:
         print("Catalog validation issues detected:")
         for issue in issues:
             print(f" - {issue}")
-    technical_courses = TechnicalCourseLoader.load_profile_courses_from_bridge(catalog_bridge)
-    if not technical_courses:
-        print("Warning: no technical courses found in catalog. Run data pipeline migration/upserts first.")
+    profile_courses = ProfileCourseLoader.load_profile_courses_from_bridge(catalog_bridge)
+    if not profile_courses:
+        print("Warning: no profile courses found in catalog. Run data pipeline migration/upserts first.")
     course_lookup = load_course_details_index(bridge=catalog_bridge)
-    profile_generator = ProfileGenerator(technical_courses)
+    profile_generator = ProfileGenerator(profile_courses)
+    print("[ProfileGen] Strategy: cp_sat")
     print("✓ Data loaded successfully")
 except Exception as e:
     print(f"Error loading data: {e}")
     catalog_bridge = None
-    technical_courses = []
+    profile_courses = []
     course_lookup = {}
     profile_generator = None
 
@@ -54,6 +54,7 @@ except Exception as e:
 class UserInterestRequest(BaseModel):
     interests: str
     num_recommendations: int = 15
+    year12_choice: str | None = None
 
 
 class SemesterPlanRow(BaseModel):
@@ -80,6 +81,11 @@ class ProfileResponse(BaseModel):
     preferences_used: list[str]
     preferences_skipped: list[str]
     constraints_satisfied: bool
+    generation_engine: str | None = None
+    solver_runtime_ms: float | None = None
+    preference_hit_count: int | None = None
+    preference_weighted_score: int | None = None
+    constraint_diagnostics: dict | None = None
     error: str = None
 
 
@@ -99,7 +105,7 @@ async def health_check():
     return {
         "status": "healthy",
         "data_loaded": profile_generator is not None,
-        "num_technical_courses": len(technical_courses) if technical_courses else 0
+        "num_profile_courses": len(profile_courses) if profile_courses else 0
     }
 
 
@@ -128,17 +134,15 @@ async def generate_profile(request: UserInterestRequest):
         print("[ProfileGen] Generating profile...")
         result = profile_generator.generate_profile(
             seed=None,  # Random each time
-            preferences=recommended_courses
+            preferences=recommended_courses,
+            year12_choice=request.year12_choice,
         )
         print(f"[ProfileGen] Generated profile with {len(result['courses'])} unique courses")
         print(f"[ProfileGen] Semester plan slots: {sum(len(s) for s in result['semester_plan'])}")
 
         # Step 3: Constraint Verifier - Validate (already done in generator, but double-check)
         print("[Verifier] Validating constraints...")
-        verifier = ConstraintVerifier(
-            result["semester_plan"],
-            breadth_depth_codes=set(result.get("breadth_depth_codes", [])),
-        )
+        verifier = ConstraintVerifier(result["semester_plan"], year12_choice=request.year12_choice)
         constraints_satisfied = verifier.verify()
         print(f"[Verifier] Constraints satisfied: {constraints_satisfied}")
         
@@ -170,7 +174,12 @@ async def generate_profile(request: UserInterestRequest):
             depth_areas_selected=result["depth_areas_selected"],
             preferences_used=result["preferences_used"],
             preferences_skipped=result["preferences_skipped"],
-            constraints_satisfied=constraints_satisfied
+            constraints_satisfied=constraints_satisfied,
+            generation_engine=result.get("generation_engine"),
+            solver_runtime_ms=result.get("solver_runtime_ms"),
+            preference_hit_count=result.get("preference_hit_count"),
+            preference_weighted_score=result.get("preference_weighted_score"),
+            constraint_diagnostics=result.get("constraint_diagnostics"),
         )
         
     except Exception as e:

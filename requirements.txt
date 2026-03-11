@@ -10,3 +10,4 @@ rapidfuzz
 openpyxl
 beautifulsoup4
 requests
+ortools

@@ -13,7 +13,12 @@ class Course:
                  ceab: CEABAttributes = None,
                  kernel_course: bool = False,
                  technical_elective: bool = False,
-                 free_elective: bool = False):
+                 free_elective: bool = False,
+                 course_type: str | None = None,
+                 non_technical_type: str | None = None,
+                 is_year1_year2: bool = False,
+                 is_required: bool = False,
+                 is_excluded: bool = False):
 
         # Validate term
         term_upper = term.upper() if term else None
@@ -28,9 +33,16 @@ class Course:
         self.kernel_course = kernel_course
         self.technical_elective = technical_elective
         self.free_elective = free_elective
+        self.course_type = course_type
+        self.non_technical_type = non_technical_type
+        self.is_year1_year2 = is_year1_year2
+        self.is_required = is_required
+        self.is_excluded = is_excluded
 
     def __repr__(self):
         return (f"Course(code='{self.course_code}', term='{self.term}', area={self.area}, "
                 f"num_credits={self.num_credits}, kernel={self.kernel_course}, "
                 f"tech_elec={self.technical_elective}, free_elec={self.free_elective}, "
+                f"course_type={self.course_type}, non_tech_type={self.non_technical_type}, "
+                f"year1_2={self.is_year1_year2}, required={self.is_required}, excluded={self.is_excluded}, "
                 f"ceab={self.ceab})")

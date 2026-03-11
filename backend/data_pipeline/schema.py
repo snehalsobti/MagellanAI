@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS course_classification (
     kernel_course INTEGER NOT NULL DEFAULT 0,
     technical_elective INTEGER NOT NULL DEFAULT 0,
     free_elective INTEGER NOT NULL DEFAULT 0,
+    is_year1_year2 INTEGER NOT NULL DEFAULT 0,
+    is_required INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (course_code, term),
     FOREIGN KEY (course_code, term) REFERENCES course_offering(course_code, term) ON DELETE CASCADE
@@ -109,6 +111,16 @@ def init_db(db_path: str | Path) -> None:
                 DROP TABLE course_ceab_old;
                 PRAGMA foreign_keys = ON;
                 """
+            )
+
+        cls_cols = {r[1] for r in conn.execute("PRAGMA table_info(course_classification)").fetchall()}
+        if "is_year1_year2" not in cls_cols:
+            conn.execute(
+                "ALTER TABLE course_classification ADD COLUMN is_year1_year2 INTEGER NOT NULL DEFAULT 0"
+            )
+        if "is_required" not in cls_cols:
+            conn.execute(
+                "ALTER TABLE course_classification ADD COLUMN is_required INTEGER NOT NULL DEFAULT 0"
             )
         conn.commit()
     finally:

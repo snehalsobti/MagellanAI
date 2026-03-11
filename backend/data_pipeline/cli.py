@@ -63,6 +63,8 @@ def main() -> None:
     upsert_parser.add_argument("--kernel", type=int, choices=[0, 1], default=0)
     upsert_parser.add_argument("--technical-elective", type=int, choices=[0, 1], default=0)
     upsert_parser.add_argument("--free-elective", type=int, choices=[0, 1], default=1)
+    upsert_parser.add_argument("--is-year1-year2", type=int, choices=[0, 1], default=0)
+    upsert_parser.add_argument("--is-required", type=int, choices=[0, 1], default=0)
     upsert_parser.add_argument("--is-excluded", type=int, choices=[0, 1], default=0)
     upsert_parser.add_argument(
         "--allow-update",
@@ -156,6 +158,8 @@ def main() -> None:
             kernel_course=bool(args.kernel),
             technical_elective=bool(args.technical_elective),
             free_elective=bool(args.free_elective),
+            is_year1_year2=bool(args.is_year1_year2),
+            is_required=bool(args.is_required),
             is_excluded=bool(args.is_excluded),
             active=True,
         )

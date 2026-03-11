@@ -1,34 +1,69 @@
 {
+  "profile_shape": {
+    "terms": ["3F", "3S", "4F", "4S"],
+    "slots_per_term": 5,
+    "allow_non_capstone_y": false
+  },
+  "assumptions": {
+    "include_year12_ceab_baseline": true,
+    "year12_default_choice": "ECE297H1"
+  },
+  "hard_requirements": {
     "total_num_credits": 10.0,
     "ece472_required": true,
     "capstone_required": true,
-
-    "min_breadth_areas": 4,
-    "min_kernel_per_breadth_area": 1,
-    
-    "min_depth_areas": 2,
-    "min_kernel_per_depth_area": 1,
-    "min_courses_per_depth_area": 3,
-
-    "min_math_sci_courses": 1,
-
-    "ceab_attributes_required": false,
-
-    "ceab_total_au" : 1870.0,
-    "ceab_math" : 214.5,
-    "ceab_ns" : 200.0,
-    "ceab_math_ns" : 462.0,
-    "ceab_es" : 247.5,
-    "ceab_ed" : 247.5,
-    "ceab_es_ed" : 990.0,
-    "ceab_cs" : 240.0,
-
-    "preobtained_total_au" : 1089.3,
-    "preobtained_math" : 255.7,
-    "preobtained_ns" : 181.1,
-    "preobtained_math_ns" : 436.8,
-    "preobtained_es" : 422.4,
-    "preobtained_ed" : 140,
-    "preobtained_es_ed" : 562.4,
-    "preobtained_cs" : 90.1
+    "min_required_non_capstone_courses": 1,
+    "breadth": {
+      "min_breadth_areas": 4,
+      "min_kernel_per_breadth_area": 1,
+      "breadth_depth_area_domain": [1, 2, 3, 4, 5, 6]
+    },
+    "depth": {
+      "min_depth_areas": 2,
+      "min_kernel_per_depth_area": 1,
+      "min_courses_per_depth_area": 3
+    },
+    "math_sci": {
+      "min_math_sci_courses": 1
+    },
+    "exclude_h3_h5": true,
+    "max_csc34_credits": 1.5,
+    "complementary": {
+      "min_complementary_courses": 4,
+      "min_hss_in_complementary": 2
+    },
+    "free_elective": {
+      "min_free_elective_courses": 1
+    },
+    "technical_electives": {
+      "min_technical_elective_courses": 3
+    },
+    "year3_technical": {
+      "min_technical_courses": 7,
+      "min_technical_courses_if_ece472": 6
+    }
+  },
+  "ceab_requirements": {
+    "enabled": true,
+    "targets": {
+      "total_au": 1870.0,
+      "math": 214.5,
+      "ns": 200.0,
+      "math_ns": 462.0,
+      "es": 247.5,
+      "ed": 247.5,
+      "es_ed": 990.0,
+      "cs": 240.0
+    },
+    "preobtained": {
+      "total_au": 0.0,
+      "math": 0.0,
+      "ns": 0.0,
+      "math_ns": 0.0,
+      "es": 0.0,
+      "ed": 0.0,
+      "es_ed": 0.0,
+      "cs": 0.0
+    }
+  }
 }

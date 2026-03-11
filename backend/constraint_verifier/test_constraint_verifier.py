@@ -19,19 +19,24 @@ class TestConstraintVerifier(unittest.TestCase):
 
     # Category 1: Integration Tests (2 tests)
     def test_fail_case(self):
-        print("\n--- Running Legacy Fail Case (including CEAB) ---")
+        print("\n--- Running Fail Case (including CEAB) ---")
         
         courses = [
             Course("ECE101H1", area=1, num_credits=0.5, kernel_course=True),
             Course("ECE102H1", area=1, num_credits=0.5),
             Course("ECE201H1", area=2, num_credits=0.5, kernel_course=True),
-            Course("ECE472H1", num_credits=0.5),
-            Course("ECE496Y1", num_credits=1.0),
+            Course("ECE472H1", num_credits=0.5, is_required=True, course_type="technical"),
+            Course("ECE496Y1", num_credits=1.0, term="Y", is_required=True, course_type="technical"),
         ]
         # Wrap into 4 semesters
         semesters = self._wrap_into_semesters(courses)
         verifier = ConstraintVerifier(semesters)
         verifier.constraints["ceab_attributes_required"] = True
+        verifier.constraints["include_year12_ceab_baseline"] = False
+        verifier.constraints["min_complementary_courses"] = 0
+        verifier.constraints["min_hss_in_complementary"] = 0
+        verifier.constraints["min_free_elective_courses"] = 0
+        verifier.constraints["min_technical_elective_courses"] = 0
 
         with patch('sys.stdout', new=StringIO()) as fake_out:
             result = verifier.verify()
@@ -43,47 +48,55 @@ class TestConstraintVerifier(unittest.TestCase):
             "Constraint Unsatisfied: Total Credits Requirement",
             "Constraint Unsatisfied: Breadth Requirement",
             "Constraint Unsatisfied: Depth Requirement",
-            "Constraint Unsatisfied CEAB: Total AU (Missing 780.7 AU)",
-            "Constraint Unsatisfied CEAB: Natural Science (Missing 18.9 AU)",
-            "Constraint Unsatisfied CEAB: Math & NS (Missing 25.2 AU)",
-            "Constraint Unsatisfied CEAB: Eng Design (Missing 107.5 AU)",
-            "Constraint Unsatisfied CEAB: ES & ED (Missing 427.6 AU)",
-            "Constraint Unsatisfied CEAB: Comp Studies (Missing 149.9 AU)"
+            "Constraint Unsatisfied: Math/Science (Area 7) Requirement",
+            "Constraint Unsatisfied CEAB: Total AU (Missing 1870.0 AU)",
+            "Constraint Unsatisfied CEAB: Natural Science (Missing 200.0 AU)",
+            "Constraint Unsatisfied CEAB: Math & NS (Missing 462.0 AU)",
+            "Constraint Unsatisfied CEAB: Eng Design (Missing 247.5 AU)",
+            "Constraint Unsatisfied CEAB: ES & ED (Missing 990.0 AU)",
+            "Constraint Unsatisfied CEAB: Comp Studies (Missing 240.0 AU)"
         ]
 
         for failure in expected_failures:
             self.assertIn(failure, output)
 
     def test_pass_case(self):
-        print("--- Running Legacy Pass Case (including CEAB) ---")
+        print("--- Running Pass Case (including CEAB) ---")
         
         courses = [
-            Course("ECE101H1", area=1, num_credits=1.0, kernel_course=True,
+            Course("ECE101H1", area=1, num_credits=1.0, kernel_course=True, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, engineering_design=30, natural_science=20)),
-            Course("ECE102H1", area=1, num_credits=1.0,
+            Course("ECE102H1", area=1, num_credits=1.0, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=50, natural_science=10)),
-            Course("ECE103H1", area=1, num_credits=1.0,
+            Course("ECE103H1", area=1, num_credits=1.0, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, engineering_design=40)),
-            Course("ECE201H1", area=2, num_credits=1.0, kernel_course=True,
+            Course("ECE201H1", area=2, num_credits=1.0, kernel_course=True, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=60)),
-            Course("ECE202H1", area=2, num_credits=1.0,
+            Course("ECE202H1", area=2, num_credits=1.0, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=60)),
-            Course("ECE203H1", area=2, num_credits=1.0,
+            Course("ECE203H1", area=2, num_credits=1.0, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=60)),
-            Course("ECE104H1", area=3, num_credits=1.0, kernel_course=True,
+            Course("ECE104H1", area=3, num_credits=1.0, kernel_course=True, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=170)),
-            Course("ECE205H1", area=4, num_credits=0.5, kernel_course=True,
+            Course("ECE205H1", area=4, num_credits=0.5, kernel_course=True, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=60, math_and_science=30)),
-            Course("ECE305H1", area=7, num_credits=0.5, kernel_course=True,
+            Course("ECE305H1", area=7, num_credits=0.5, kernel_course=True, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, eng_sci_and_design=60, math_and_science=30)),
-            Course("ECE472H1", num_credits=1.0,
+            Course("ECE472H1", num_credits=1.0, is_required=True, course_type="technical",
                 ceab=CEABAttributes(total_AU=80, complementary_studies=80)),
-            Course("ECE496Y1", num_credits=1.0, 
+            Course("ECE496Y1", num_credits=1.0, term="Y", is_required=True, course_type="technical",
                 ceab=CEABAttributes(total_AU=100, engineering_design=50, complementary_studies=80))
         ]
 
         semesters = self._wrap_into_semesters(courses)
         verifier = ConstraintVerifier(semesters)
+        verifier.constraints["ceab_attributes_required"] = False
+        verifier.constraints["include_year12_ceab_baseline"] = False
+        verifier.constraints["min_complementary_courses"] = 0
+        verifier.constraints["min_hss_in_complementary"] = 0
+        verifier.constraints["min_free_elective_courses"] = 0
+        verifier.constraints["min_technical_elective_courses"] = 0
+        verifier.constraints["year3_min_technical_courses"] = 0
         
         with patch('sys.stdout', new=StringIO()) as fake_out:
             result = verifier.verify()
@@ -126,18 +139,18 @@ class TestConstraintVerifierExtended(unittest.TestCase):
 
     def create_base_valid_semesters(self):
         courses = [
-            Course("C1", area=1, num_credits=1.0, kernel_course=True),
-            Course("C1_extra_1", area=1, num_credits=1.0),
-            Course("C1_extra_2", area=1, num_credits=1.0),
-            Course("C2", area=2, num_credits=1.0, kernel_course=True),
-            Course("C2_extra_1", area=2, num_credits=1.0),
-            Course("C2_extra_2", area=2, num_credits=1.0),
-            Course("C3", area=3, num_credits=1.0, kernel_course=True),
-            Course("C4", area=4, num_credits=0.5, kernel_course=True),
-            Course("ECE472H1", area=5, num_credits=0.5),
-            Course("ECE496Y1", area=6, num_credits=1.0),
-            Course("C5", area=7, num_credits=0.5),
-            Course("C6", area=8, num_credits=0.5),
+            Course("C1", area=1, num_credits=1.0, kernel_course=True, course_type="technical"),
+            Course("C1_extra_1", area=1, num_credits=1.0, course_type="technical"),
+            Course("C1_extra_2", area=1, num_credits=1.0, course_type="technical"),
+            Course("C2", area=2, num_credits=1.0, kernel_course=True, course_type="technical"),
+            Course("C2_extra_1", area=2, num_credits=1.0, course_type="technical"),
+            Course("C2_extra_2", area=2, num_credits=1.0, course_type="technical"),
+            Course("C3", area=3, num_credits=1.0, kernel_course=True, course_type="technical"),
+            Course("C4", area=4, num_credits=0.5, kernel_course=True, course_type="technical"),
+            Course("ECE472H1", area=5, num_credits=0.5, is_required=True, course_type="technical"),
+            Course("ECE496Y1", area=6, num_credits=1.0, term="Y", is_required=True, course_type="technical"),
+            Course("C5", area=7, num_credits=0.5, course_type="technical"),
+            Course("C6", area=8, num_credits=0.5, course_type="technical"),
         ]
         return self._wrap(courses)
 
@@ -211,7 +224,7 @@ class TestConstraintVerifierExtended(unittest.TestCase):
     def test_capstone_multiple_fail(self):
         self._print_header("Capstone")
         sem = self.create_base_valid_semesters()
-        sem[0].append(Course("APS490Y1", 1.0))
+        sem[0].append(Course("APS490Y1", 1.0, term="Y", is_required=True, course_type="technical"))
         self.assertFalse(ConstraintVerifier(sem).verify_capstone())
 
     # --- BREADTH & DEPTH (5 tests) ---
@@ -245,20 +258,16 @@ class TestConstraintVerifierExtended(unittest.TestCase):
     def test_math_sci_pass(self):
         self._print_header("Math & Science")
         sem = self.create_base_valid_semesters()
-        v = ConstraintVerifier(sem, breadth_depth_codes=set())
+        v = ConstraintVerifier(sem)
         v.constraints["min_math_sci_courses"] = 1
         self.assertTrue(v.verify_math_sci_requirement())
 
-    def test_math_sci_fail_if_area7_used_in_breadth_depth(self):
+    def test_math_sci_area7_independent_of_breadth_depth_assignments(self):
         self._print_header("Math & Science")
         sem = self.create_base_valid_semesters()
-        # Find the area-7 course code
-        area7_codes = {c.course_code for s in sem for c in s if c.area == 7}
-        self.assertTrue(area7_codes)  # sanity
-
-        v = ConstraintVerifier(sem, breadth_depth_codes=area7_codes)
+        v = ConstraintVerifier(sem)
         v.constraints["min_math_sci_courses"] = 1
-        self.assertFalse(v.verify_math_sci_requirement())
+        self.assertTrue(v.verify_math_sci_requirement())
 
     # --- REPETITION & DYNAMIC (3 tests) ---
     def test_repetition_fail(self):
@@ -304,6 +313,11 @@ class TestCEABAccreditation(unittest.TestCase):
         ]
         v = ConstraintVerifier(self._wrap(courses))
         v.constraints["ceab_attributes_required"] = True
+        v.constraints["include_year12_ceab_baseline"] = False
+        v.constraints["min_complementary_courses"] = 0
+        v.constraints["min_hss_in_complementary"] = 0
+        v.constraints["min_free_elective_courses"] = 0
+        v.constraints["min_technical_elective_courses"] = 0
         v.constraints.update({"ceab_math": 50, "preobtained_math": 0, 
                              "ceab_ns": 50, "preobtained_ns": 0, 
                              "ceab_math_ns": 150, "preobtained_math_ns": 0})
@@ -315,6 +329,11 @@ class TestCEABAccreditation(unittest.TestCase):
         courses = [Course("C1", 1.0, ceab=CEABAttributes(total_AU=50, mathematics=50))]
         v = ConstraintVerifier(self._wrap(courses))
         v.constraints["ceab_attributes_required"] = True
+        v.constraints["include_year12_ceab_baseline"] = False
+        v.constraints["min_complementary_courses"] = 0
+        v.constraints["min_hss_in_complementary"] = 0
+        v.constraints["min_free_elective_courses"] = 0
+        v.constraints["min_technical_elective_courses"] = 0
         v.constraints.update({"ceab_math": 50, "preobtained_math": 0, 
                              "ceab_total_au": 200, "preobtained_total_au": 0})
         results = v.verify_ceab_requirements()

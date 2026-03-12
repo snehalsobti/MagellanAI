@@ -322,7 +322,7 @@ class TestCEABAccreditation(unittest.TestCase):
                              "ceab_ns": 50, "preobtained_ns": 0, 
                              "ceab_math_ns": 150, "preobtained_math_ns": 0})
         results = v.verify_ceab_requirements()
-        self.assertFalse(results["Math & NS"][0])
+        self.assertFalse(results["Math & NS"]["ok"])
 
     def test_ceab_total_au_deficit_fail(self):
         self._print_header("CEAB Attribute Logic Tests")
@@ -337,7 +337,7 @@ class TestCEABAccreditation(unittest.TestCase):
         v.constraints.update({"ceab_math": 50, "preobtained_math": 0, 
                              "ceab_total_au": 200, "preobtained_total_au": 0})
         results = v.verify_ceab_requirements()
-        self.assertFalse(results["Total AU"][0])
+        self.assertFalse(results["Total AU"]["ok"])
 
 if __name__ == "__main__":
     unittest.main()

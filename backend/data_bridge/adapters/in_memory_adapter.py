@@ -46,10 +46,16 @@ class InMemoryCatalogAdapter(CatalogBridge):
                 out[row.course_code] = row.name
         return out
 
-    def get_rag_documents(self, active_only: bool = True) -> list[RagDocument]:
+    def get_rag_documents(
+        self,
+        active_only: bool = True,
+        exclude_year1_year2: bool = False,
+    ) -> list[RagDocument]:
         docs: dict[str, RagDocument] = {}
         for row in self._rows.values():
             if active_only and (not row.active or row.is_excluded):
+                continue
+            if exclude_year1_year2 and row.is_year1_year2:
                 continue
             docs[row.course_code] = RagDocument(
                 course_code=row.course_code,

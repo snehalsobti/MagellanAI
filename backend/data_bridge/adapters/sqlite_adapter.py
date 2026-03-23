@@ -89,7 +89,11 @@ class SQLiteCatalogAdapter(CatalogBridge):
             ).fetchall()
         return {r["course_code"]: (r["name"] or "") for r in rows}
 
-    def get_rag_documents(self, active_only: bool = True) -> list[RagDocument]:
+    def get_rag_documents(
+        self,
+        active_only: bool = True,
+        exclude_year1_year2: bool = False,
+    ) -> list[RagDocument]:
         query = """
             SELECT
                 c.course_code,
@@ -117,6 +121,15 @@ class SQLiteCatalogAdapter(CatalogBridge):
                     WHERE o.course_code = c.course_code
                       AND o.active = 1
                       AND o.is_excluded = 0
+                )
+            """
+        if exclude_year1_year2:
+            # Exclude any course that has at least one year1/year2 classification.
+            query += """
+                AND NOT EXISTS (
+                    SELECT 1 FROM course_classification cls
+                    WHERE cls.course_code = c.course_code
+                      AND cls.is_year1_year2 = 1
                 )
             """
         query += " ORDER BY c.course_code"

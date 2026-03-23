@@ -24,6 +24,12 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 MIN_K = 10
 MAX_K = 20
 
+# Bump this string whenever the content fed to the embedding model changes (e.g. a
+# new field is added to the embedded text, or year1/year2 filtering is toggled).
+# A changed version causes the fingerprint to differ from any cached value, forcing
+# a full index rebuild so stale embeddings are never used.
+_EMBEDDING_SCHEMA_VERSION = "v2"
+
 # OpenAI Chat settings (set OPENAI_API_KEY in env)
 OPENAI_MODEL = os.getenv("RAG_OPENAI_MODEL", "gpt-4")
 OPENAI_TIMEOUT = 30  # seconds
@@ -39,7 +45,9 @@ def get_model():
 
 
 def read_courses_from_bridge(bridge: CatalogBridge):
-    docs = bridge.get_rag_documents(active_only=True)
+    # Year 1/2 courses are pre-requisites already known; excluding them prevents the
+    # ranking engine from recommending them as profile choices.
+    docs = bridge.get_rag_documents(active_only=True, exclude_year1_year2=True)
     data = {
         "Course Code": [d.course_code for d in docs],
         "Course Name": [d.title for d in docs],
@@ -49,13 +57,34 @@ def read_courses_from_bridge(bridge: CatalogBridge):
 
 
 def prepare_texts(df: pd.DataFrame):
-    texts = (df["Course Name"].str.strip() + ". " + df["Description"].str.strip()).tolist()
-    texts = [t if t.strip() != "" else df.loc[i, "Course Code"] for i, t in enumerate(texts)]
+    """
+    Build the text fed to the embedding model for each course.
+
+    Format: "COURSE_CODE. Course Name. Description"
+
+    Prepending the course code means that if a user explicitly mentions a code
+    (e.g. "ECE421H1") in their prompt, the cosine similarity will pick it up in
+    Phase 1 — not just semantically via the name/description.
+    """
+    texts: list[str] = []
+    for i in range(len(df)):
+        code = str(df.loc[i, "Course Code"]).strip()
+        name = str(df.loc[i, "Course Name"]).strip()
+        desc = str(df.loc[i, "Description"]).strip()
+        # Always start with the course code so exact-code queries match directly.
+        parts = [code]
+        if name:
+            parts.append(name)
+        if desc:
+            parts.append(desc)
+        texts.append(". ".join(parts))
     return texts
 
 
 def _get_fingerprint(bridge: CatalogBridge) -> str:
-    raw = f"bridge:{bridge.get_catalog_fingerprint()}"
+    # Include schema version so any change to prepare_texts or index filters
+    # automatically busts the cached embeddings.
+    raw = f"schema:{_EMBEDDING_SCHEMA_VERSION}:bridge:{bridge.get_catalog_fingerprint()}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
@@ -145,7 +174,9 @@ def call_chatgpt_system(user_prompt: str, candidates_block: str, desired_k: int)
         "You are an assistant that, given a user request and a list of candidate courses (one per line, each "
         "line: COURSE_CODE <tab> CourseName. Description), must return a JSON array (Python list) of course codes "
         "only, ordered from most to least relevant to the user's request. The array must contain at most the requested "
-        "number of items. DO NOT include any additional text, explanation, or punctuation outside the JSON array."
+        "number of items. If the user explicitly mentions a course code (e.g. 'ECE421H1'), treat that as a strong "
+        "signal and prioritise that course near the top of the ranking if it appears in the candidates. "
+        "DO NOT include any additional text, explanation, or punctuation outside the JSON array."
         " Output must be valid JSON like [\"ACT230H1\", \"MAT137Y1\", ...]."
     )
 

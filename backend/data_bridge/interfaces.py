@@ -15,7 +15,11 @@ class CatalogBridge(ABC):
         pass
 
     @abstractmethod
-    def get_rag_documents(self, active_only: bool = True) -> list[RagDocument]:
+    def get_rag_documents(
+        self,
+        active_only: bool = True,
+        exclude_year1_year2: bool = False,
+    ) -> list[RagDocument]:
         pass
 
     @abstractmethod

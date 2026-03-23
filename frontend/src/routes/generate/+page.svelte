@@ -3,22 +3,89 @@
 	import { goto } from '$app/navigation';
 	import { getAuthMode } from '$lib/auth';
 	import { fetchYear12Courses } from '$lib/api/catalog';
-	import { generateProfile } from '$lib/api/profile';
+	import { generateProfile, regenerateProfile } from '$lib/api/profile';
 	import CourseDetailsModal from '$lib/components/CourseDetailsModal.svelte';
+	import SlotEditor from '$lib/components/SlotEditor.svelte';
 	import type { CourseInfo, ProfileResponse } from '$lib/types/profile';
+	import {
+		type FeedbackState,
+		type FeedbackRecord,
+		type FeedbackHonorReport,
+		type HistoryEntry,
+		isCapstoneCode,
+		FEEDBACK_CSS_CLASS,
+		HISTORY_LIMIT
+	} from '$lib/types/feedback';
 
 	const terms = ['3F', '3S', '4F', '4S'];
 
+	// ── Prompt / generation state ─────────────────────────────────────────────
 	let interests = '';
 	let loading = false;
+	let regenerating = false;
 	let profile: ProfileResponse | null = null;
 	let error: string | null = null;
-	let selectedCourse: CourseInfo | null = null;
 	let year12Choice: 'ECE295H1' | 'ECE297H1' = 'ECE297H1';
 	let year12Courses: string[] = [];
 	let loadingTimer: ReturnType<typeof setInterval> | null = null;
-let elapsedSeconds = 0;
-let loadingDots = '.';
+	let elapsedSeconds = 0;
+	let loadingDots = '.';
+
+	// ── Feedback state ────────────────────────────────────────────────────────
+	/** Active feedback for the current (editable) iteration. */
+	let currentFeedback: FeedbackRecord = {};
+	/** Original ranked preference list from the first RAG call — reused on every regen. */
+	let originalPreferences: string[] = [];
+	/** No-feedback notice (shown when "Regenerate" clicked with empty feedback). */
+	let noFeedbackNotice = false;
+	/** Honor report shown after a successful regeneration. */
+	let honorReport: FeedbackHonorReport | null = null;
+	/** Error specific to regeneration (kept separate from the main generate error). */
+	let regenError: string | null = null;
+	/** Incremented on each successful generation/regeneration. */
+	let iterationCounter = 0;
+
+	// ── Iteration history (session-only, capped at HISTORY_LIMIT) ─────────────
+	let historyEntries: HistoryEntry[] = [];
+	/**
+	 * Index into historyEntries for the read-only view.
+	 * null = viewing the current (live, editable) profile.
+	 */
+	let viewingHistoryIdx: number | null = null;
+
+	// ── Slot editor ───────────────────────────────────────────────────────────
+	let slotEditorCode: string | null = null;
+	let slotEditorAnchorRect: DOMRect | null = null;
+
+	// ── Feedback memory panel ─────────────────────────────────────────────────
+	let feedbackPanelOpen = true;
+
+	// ── Course name cache ─────────────────────────────────────────────────────
+	/**
+	 * Accumulates course_code → course_name across all profiles seen this session.
+	 * Used to resolve names for courses no longer in the current profile (e.g. excluded
+	 * courses that were seen in a past iteration and are only shown in the panel).
+	 */
+	let courseNameCache: Record<string, string> = {};
+
+	function updateCourseNameCache(p: ProfileResponse) {
+		const updates: Record<string, string> = {};
+		for (const c of p.courses) {
+			updates[c.course_code] = c.course_name;
+		}
+		courseNameCache = { ...courseNameCache, ...updates };
+	}
+
+	function clearAllFeedback() {
+		currentFeedback = {};
+		noFeedbackNotice = false;
+		honorReport = null;
+	}
+
+	// ── Course detail modal ───────────────────────────────────────────────────
+	let selectedCourse: CourseInfo | null = null;
+
+	// ─────────────────────────────────────────────────────────────────────────
 
 	onMount(async () => {
 		if (!getAuthMode()) {
@@ -43,17 +110,19 @@ let loadingDots = '.';
 	function cycleLoadingSteps() {
 		if (loadingTimer) clearInterval(loadingTimer);
 		loadingTimer = setInterval(() => {
-		elapsedSeconds = Number((elapsedSeconds + 0.5).toFixed(1));
-		loadingDots = loadingDots.length >= 3 ? '.' : `${loadingDots}.`;
-	}, 500);
+			elapsedSeconds = Number((elapsedSeconds + 0.5).toFixed(1));
+			loadingDots = loadingDots.length >= 3 ? '.' : `${loadingDots}.`;
+		}, 500);
 	}
 
 	function stopLoadingSteps() {
 		if (loadingTimer) clearInterval(loadingTimer);
 		loadingTimer = null;
-	elapsedSeconds = 0;
-	loadingDots = '.';
+		elapsedSeconds = 0;
+		loadingDots = '.';
 	}
+
+	// ── Initial profile generation ────────────────────────────────────────────
 
 	async function handleSubmit(event: SubmitEvent) {
 		event.preventDefault();
@@ -64,8 +133,16 @@ let loadingDots = '.';
 		loading = true;
 		error = null;
 		profile = null;
+		regenError = null;
+		honorReport = null;
+		noFeedbackNotice = false;
 		elapsedSeconds = 0;
 		loadingDots = '.';
+		currentFeedback = {};
+		historyEntries = [];
+		viewingHistoryIdx = null;
+		iterationCounter = 0;
+		originalPreferences = [];
 		cycleLoadingSteps();
 		try {
 			profile = await generateProfile({
@@ -73,6 +150,12 @@ let loadingDots = '.';
 				num_recommendations: 15,
 				year12_choice: year12Choice
 			});
+			iterationCounter = 1;
+			// Preserve the original ranked preference list for all future regenerations
+			originalPreferences = profile?.preferences_used
+				? [...(profile.preferences_used || []), ...(profile.preferences_skipped || [])]
+				: [];
+			if (profile) updateCourseNameCache(profile);
 		} catch (e) {
 			error =
 				e instanceof Error
@@ -84,17 +167,190 @@ let loadingDots = '.';
 		}
 	}
 
+	// ── Generate Fresh ────────────────────────────────────────────────────────
+
+	async function handleGenerateFresh(event: MouseEvent) {
+		event.preventDefault();
+		if (!interests.trim()) {
+			error = 'Please enter your interests.';
+			return;
+		}
+		loading = true;
+		error = null;
+		regenError = null;
+		honorReport = null;
+		noFeedbackNotice = false;
+		profile = null;
+		currentFeedback = {};
+		historyEntries = [];
+		viewingHistoryIdx = null;
+		iterationCounter = 0;
+		originalPreferences = [];
+		elapsedSeconds = 0;
+		loadingDots = '.';
+		cycleLoadingSteps();
+		try {
+			profile = await generateProfile({
+				interests: interests.trim(),
+				num_recommendations: 15,
+				year12_choice: year12Choice
+			});
+			iterationCounter = 1;
+			originalPreferences = [
+				...(profile?.preferences_used || []),
+				...(profile?.preferences_skipped || [])
+			];
+			if (profile) updateCourseNameCache(profile);
+		} catch (e) {
+			error =
+				e instanceof Error
+					? e.message
+					: 'Failed to generate profile. Make sure backend is running and configured.';
+		} finally {
+			loading = false;
+			stopLoadingSteps();
+		}
+	}
+
+	// ── Regenerate with Feedback ──────────────────────────────────────────────
+
+	async function handleRegenerate(event: MouseEvent) {
+		event.preventDefault();
+		noFeedbackNotice = false;
+		regenError = null;
+		honorReport = null;
+
+		const feedbackKeys = Object.keys(currentFeedback);
+		if (feedbackKeys.length === 0) {
+			noFeedbackNotice = true;
+			return;
+		}
+
+		const locked = feedbackKeys.filter((c) => currentFeedback[c] === 'LOCK');
+		const excluded = feedbackKeys.filter((c) => currentFeedback[c] === 'EXCLUDE');
+		const liked = feedbackKeys.filter((c) => currentFeedback[c] === 'LIKE');
+		const disliked = feedbackKeys.filter((c) => currentFeedback[c] === 'DISLIKE');
+
+		regenerating = true;
+		elapsedSeconds = 0;
+		loadingDots = '.';
+		cycleLoadingSteps();
+		try {
+			const response = await regenerateProfile({
+				year12_choice: year12Choice,
+				preferences: originalPreferences,
+				feedback: { locked, excluded, liked, disliked }
+			});
+
+			if (response.timed_out) {
+				regenError =
+					'⏱ The solver timed out (15 s) with these constraints. Your current profile is unchanged. Try fewer or less restrictive constraints.';
+				return;
+			}
+			if (response.feedback_infeasible) {
+				regenError =
+					'⚠ No valid profile exists with these exact constraints. Try removing some locked or excluded courses.';
+				return;
+			}
+			if (!response.success) {
+				regenError = response.error || 'Regeneration failed.';
+				return;
+			}
+
+			// Success: push current profile to history, update state.
+			// Snapshot the submitted feedback so history captures it exactly.
+			const submittedFeedback: FeedbackRecord = { ...currentFeedback };
+			const entry: HistoryEntry = {
+				iteration: iterationCounter,
+				profile: profile!,
+				feedback: submittedFeedback,
+				timestamp: Date.now()
+			};
+			historyEntries = [...historyEntries, entry].slice(-HISTORY_LIMIT);
+			iterationCounter += 1;
+			// Carry forward the submitted feedback into the new iteration so that the
+			// user can see which constraints are still active and modify them freely.
+			currentFeedback = { ...submittedFeedback };
+			viewingHistoryIdx = null;
+			profile = response;
+			updateCourseNameCache(response);
+
+			if (response.feedback_result) {
+				honorReport = {
+					liked_honored: response.feedback_result.liked_honored ?? [],
+					liked_skipped: response.feedback_result.liked_skipped ?? [],
+					disliked_honored: response.feedback_result.disliked_honored ?? [],
+					disliked_forced: response.feedback_result.disliked_forced ?? []
+				};
+			}
+		} catch (e) {
+			regenError =
+				e instanceof Error ? e.message : 'Regeneration failed. Please try again.';
+		} finally {
+			regenerating = false;
+			stopLoadingSteps();
+		}
+	}
+
+	// ── Feedback management ───────────────────────────────────────────────────
+
+	function setFeedback(code: string, state: FeedbackState | null) {
+		if (state === null) {
+			const updated = { ...currentFeedback };
+			delete updated[code];
+			currentFeedback = updated;
+		} else {
+			currentFeedback = { ...currentFeedback, [code]: state };
+		}
+		noFeedbackNotice = false;
+		// Clear honor report if feedback changes
+		honorReport = null;
+	}
+
+	function removeFeedback(code: string) {
+		setFeedback(code, null);
+	}
+
+	// ── Slot editor ───────────────────────────────────────────────────────────
+
+	function openSlotEditor(code: string, event: MouseEvent) {
+		event.stopPropagation();
+		slotEditorCode = code;
+		slotEditorAnchorRect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+	}
+
+	function closeSlotEditor() {
+		slotEditorCode = null;
+		slotEditorAnchorRect = null;
+	}
+
+	function handleSlotEditorSet(code: string, state: FeedbackState | null) {
+		setFeedback(code, state);
+		closeSlotEditor();
+	}
+
+	// ── History navigation ────────────────────────────────────────────────────
+
+	function viewIteration(idx: number | null) {
+		viewingHistoryIdx = idx;
+		closeSlotEditor();
+	}
+
+	// ── Course detail modal ───────────────────────────────────────────────────
+
+	function openCourseByCode(code: string, p: ProfileResponse | null) {
+		if (!p) return;
+		selectedCourse = courseMap(p).get(code) || null;
+	}
+
+	// ── Derived values ────────────────────────────────────────────────────────
+
 	function sumSemesterSlots(current: ProfileResponse): number {
 		return current.semester_plan?.reduce((acc, row) => acc + (row.course_codes?.length || 0), 0) ?? 0;
 	}
 
 	function courseMap(current: ProfileResponse): Map<string, CourseInfo> {
 		return new Map(current.courses.map((c) => [c.course_code, c]));
-	}
-
-	function openCourseByCode(code: string) {
-		if (!profile) return;
-		selectedCourse = courseMap(profile).get(code) || null;
 	}
 
 	function uniqueByCode(courses: CourseInfo[]) {
@@ -140,13 +396,10 @@ let loadingDots = '.';
 		for (const [area, courses] of areaRows.entries()) {
 			areaRows.set(
 				area,
-				courses
-					.slice()
-					.sort((a, b) => a.course_code.localeCompare(b.course_code))
+				courses.slice().sort((a, b) => a.course_code.localeCompare(b.course_code))
 			);
 		}
 
-		// Outside kernel/depth, each course is consumed by at most one requirement bucket.
 		const consumed = new Set<string>(kernelDepthCodes);
 		const pick = (predicate: (c: CourseInfo) => boolean, limit: number): CourseInfo[] => {
 			const picked: CourseInfo[] = [];
@@ -173,8 +426,17 @@ let loadingDots = '.';
 		return { areaRows, engEcon, capstone, sciMath, technicalElectives, hsscs, free, byCode };
 	}
 
-	$: mapped = profile ? courseMap(profile) : new Map<string, CourseInfo>();
-	$: buckets = profile ? computeProgramBuckets(profile) : null;
+	// ── Reactive / derived ────────────────────────────────────────────────────
+
+	/** The profile currently displayed (may be a past read-only iteration). */
+	$: displayProfile =
+		viewingHistoryIdx !== null ? historyEntries[viewingHistoryIdx]?.profile ?? null : profile;
+
+	$: isReadOnly = viewingHistoryIdx !== null;
+
+	$: mapped = displayProfile ? courseMap(displayProfile) : new Map<string, CourseInfo>();
+	$: buckets = displayProfile ? computeProgramBuckets(displayProfile) : null;
+
 	$: year1Courses = year12Courses.filter((c) => courseLevel(c) === 1);
 	$: year2Courses = year12Courses.filter(
 		(c) => courseLevel(c) === 2 && c !== 'ECE295H1' && c !== 'ECE297H1'
@@ -183,11 +445,42 @@ let loadingDots = '.';
 		const lvl = courseLevel(c);
 		return lvl !== 1 && lvl !== 2 && c !== 'ECE295H1' && c !== 'ECE297H1';
 	});
+
+	/** Whether there is any active feedback on the current editable iteration (used for regen check). */
+	$: hasFeedback = Object.keys(currentFeedback).length > 0;
+
+	/**
+	 * The feedback to display in the grid and panel.
+	 * In read-only (history) mode this is the feedback from that past iteration;
+	 * in editable mode it is the live currentFeedback.
+	 */
+	$: displayFeedback =
+		viewingHistoryIdx !== null
+			? (historyEntries[viewingHistoryIdx]?.feedback ?? {})
+			: currentFeedback;
+
+	/** Whether there is any feedback to display (grid tints + panel). */
+	$: hasDisplayFeedback = Object.keys(displayFeedback).length > 0;
+
+	/** Feedback entries grouped by state for the memory panel — always based on displayFeedback. */
+	$: feedbackByState = {
+		LOCK: Object.keys(displayFeedback).filter((c) => displayFeedback[c] === 'LOCK'),
+		EXCLUDE: Object.keys(displayFeedback).filter((c) => displayFeedback[c] === 'EXCLUDE'),
+		LIKE: Object.keys(displayFeedback).filter((c) => displayFeedback[c] === 'LIKE'),
+		DISLIKE: Object.keys(displayFeedback).filter((c) => displayFeedback[c] === 'DISLIKE')
+	} as Record<FeedbackState, string[]>;
+
+	/** History dropdown entries (oldest first). */
+	$: historyDropdownItems = [
+		...historyEntries.map((e) => ({ label: `Iteration ${e.iteration}`, idx: e.iteration - 1, histIdx: historyEntries.indexOf(e) })),
+		{ label: `Current (Iteration ${iterationCounter})`, idx: null, histIdx: null }
+	];
 </script>
 
 <svelte:head><title>Generate Profile - MagellanAI</title></svelte:head>
 
 <main class="page">
+	<!-- ── Prompt panel ──────────────────────────────────────────────────── -->
 	<section class="prompt-panel">
 		<h2>Generate a new course profile</h2>
 		<p>
@@ -197,10 +490,10 @@ let loadingDots = '.';
 		<form on:submit={handleSubmit}>
 			<fieldset class="choice-fieldset">
 				<legend>Choose your Year 2 Design Course</legend>
-			<div class="radio-row">
-				<label><input type="radio" bind:group={year12Choice} value="ECE295H1" /> ECE295H1</label>
-				<label><input type="radio" bind:group={year12Choice} value="ECE297H1" /> ECE297H1</label>
-			</div>
+				<div class="radio-row">
+					<label><input type="radio" bind:group={year12Choice} value="ECE295H1" /> ECE295H1</label>
+					<label><input type="radio" bind:group={year12Choice} value="ECE297H1" /> ECE297H1</label>
+				</div>
 			</fieldset>
 
 			<div class="year12-list">
@@ -240,12 +533,15 @@ let loadingDots = '.';
 				bind:value={interests}
 				placeholder="e.g., I enjoy machine learning systems and software engineering for intelligent products."
 				rows="6"
-				disabled={loading}
+				disabled={loading || regenerating}
 			></textarea>
-			<button type="submit" disabled={loading}>{loading ? 'Generating...' : 'Generate profile'}</button>
+			<button type="submit" disabled={loading || regenerating}>
+				{loading ? 'Generating...' : 'Generate profile'}
+			</button>
 		</form>
 	</section>
 
+	<!-- ── Results area ──────────────────────────────────────────────────── -->
 	<section class="results">
 		{#if loading}
 			<div class="loading-card">
@@ -257,42 +553,190 @@ let loadingDots = '.';
 			</div>
 		{:else if error}
 			<div class="error">{error}</div>
-		{:else if profile}
+		{:else if displayProfile}
+		<!-- ── History navigation (shown whenever past iterations exist) ──── -->
+		{#if historyEntries.length > 0}
+			<div class="nav-bar">
+				<div class="nav-bar-left">
+					<label for="history-sel" class="history-label">View iteration:</label>
+					<select
+						id="history-sel"
+						class="history-select"
+						on:change={(e) => {
+							const v = (e.currentTarget as HTMLSelectElement).value;
+							viewIteration(v === 'current' ? null : parseInt(v));
+						}}
+					>
+						{#each historyEntries as entry, i}
+							<option value={String(i)} selected={viewingHistoryIdx === i}>
+								Iteration {entry.iteration}
+							</option>
+						{/each}
+						<option value="current" selected={viewingHistoryIdx === null}>
+							Current (Iteration {iterationCounter})
+						</option>
+					</select>
+				</div>
+				{#if isReadOnly}
+					<button type="button" class="btn-back-current" on:click={() => viewIteration(null)}>
+						← Back to current
+					</button>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- ── Feedback action bar (editable mode only) ──────────────────── -->
+		{#if !isReadOnly}
+			<div class="feedback-actions">
+				<div class="fa-right">
+					<button
+						type="button"
+						class="btn-fresh"
+						disabled={loading || regenerating}
+						on:click={handleGenerateFresh}
+					>
+						↺ Generate Fresh
+					</button>
+					<button
+						type="button"
+						class="btn-regen"
+						disabled={loading || regenerating}
+						on:click={handleRegenerate}
+					>
+						{regenerating ? '⟳ Regenerating...' : '⟳ Regenerate with Feedback'}
+					</button>
+				</div>
+			</div>
+
+			<!-- Regeneration loading banner (shown while solver is running) -->
+			{#if regenerating}
+				<div class="loading-card regen-loading-card">
+					<div class="spinner"></div>
+					<div>
+						<p class="loading-title">Regenerating profile{loadingDots}</p>
+						<p class="loading-time">Time elapsed: {elapsedSeconds.toFixed(1)}s</p>
+					</div>
+				</div>
+			{/if}
+
+			<!-- Inline notices for regeneration outcomes -->
+			{#if noFeedbackNotice}
+				<div class="notice-banner notice-info">
+					ℹ No feedback has been set — profile is unchanged. Use the ⚙ icon on any course slot to add feedback.
+				</div>
+			{/if}
+			{#if regenError}
+				<div class="notice-banner notice-warn">{regenError}</div>
+			{/if}
+			{#if honorReport && (honorReport.liked_honored.length > 0 || honorReport.liked_skipped.length > 0 || honorReport.disliked_honored.length > 0 || honorReport.disliked_forced.length > 0)}
+				<div class="honor-report">
+					<div class="honor-header">
+						<span>Feedback result — Iteration {iterationCounter}</span>
+						<button type="button" class="honor-close" on:click={() => (honorReport = null)}>✕</button>
+					</div>
+					{#each honorReport.liked_honored as code}
+						<div class="honor-row honor-ok">✔ Liked <strong>{code}</strong> — honored (placed)</div>
+					{/each}
+					{#each honorReport.liked_skipped as code}
+						<div class="honor-row honor-skip">✗ Liked <strong>{code}</strong> — not placed (constraint conflict)</div>
+					{/each}
+					{#each honorReport.disliked_honored as code}
+						<div class="honor-row honor-ok">✔ Disliked <strong>{code}</strong> — successfully avoided</div>
+					{/each}
+					{#each honorReport.disliked_forced as code}
+						<div class="honor-row honor-force">⚠ Disliked <strong>{code}</strong> — still placed (required by constraints)</div>
+					{/each}
+				</div>
+			{/if}
+		{/if}
+
+		<!-- Read-only banner for history view -->
+		{#if isReadOnly}
+			<div class="readonly-banner">
+				<span>📚 Viewing Iteration {historyEntries[viewingHistoryIdx ?? 0]?.iteration} — read-only</span>
+			</div>
+		{/if}
+
 			<div class="stack">
+				<!-- ── Profile overview ─────────────────────────────────────── -->
 				<section class="card">
 					<h3>Profile overview</h3>
 					<div class="stats">
-						<div><span>Total credits</span><strong>{profile.total_credits}</strong></div>
-						<div><span>Semester slots</span><strong>{sumSemesterSlots(profile)}</strong></div>
-						<div><span>Kernel areas</span><strong>{profile.kernel_areas_selected.join(', ')}</strong></div>
-						<div><span>Depth areas</span><strong>{profile.depth_areas_selected.join(', ')}</strong></div>
-						<div class={profile.constraints_satisfied ? 'constraint-cell-ok' : 'constraint-cell-bad'}>
+						<div><span>Total credits</span><strong>{displayProfile.total_credits}</strong></div>
+						<div><span>Semester slots</span><strong>{sumSemesterSlots(displayProfile)}</strong></div>
+						<div><span>Kernel areas</span><strong>{displayProfile.kernel_areas_selected.join(', ')}</strong></div>
+						<div><span>Depth areas</span><strong>{displayProfile.depth_areas_selected.join(', ')}</strong></div>
+						<div class={displayProfile.constraints_satisfied ? 'constraint-cell-ok' : 'constraint-cell-bad'}>
 							<span>Constraints</span>
-							<strong class={profile.constraints_satisfied ? 'status-ok' : 'status-bad'}>
-								{profile.constraints_satisfied ? 'Met' : 'Not met'}
+							<strong class={displayProfile.constraints_satisfied ? 'status-ok' : 'status-bad'}>
+								{displayProfile.constraints_satisfied ? 'Met' : 'Not met'}
 							</strong>
 						</div>
 					</div>
 				</section>
 
+				<!-- ── Semester plan grid ────────────────────────────────────── -->
 				<section class="card">
+				<div class="grid-header">
 					<h3>Semester plan</h3>
+					{#if hasDisplayFeedback}
+						<div class="grid-header-right">
+							<div class="feedback-legend">
+								{#if feedbackByState.LOCK.length > 0}<span class="leg-item leg-lock">🔒 Locked</span>{/if}
+								{#if feedbackByState.EXCLUDE.length > 0}<span class="leg-item leg-exclude">❌ Excluded</span>{/if}
+								{#if feedbackByState.LIKE.length > 0}<span class="leg-item leg-like">👍 Liked</span>{/if}
+								{#if feedbackByState.DISLIKE.length > 0}<span class="leg-item leg-dislike">👎 Disliked</span>{/if}
+							</div>
+							{#if !isReadOnly && hasFeedback}
+								<button
+									type="button"
+									class="btn-clear-all"
+									on:click={clearAllFeedback}
+									title="Remove all feedback"
+								>✕ Clear all</button>
+							{/if}
+						</div>
+					{/if}
+				</div>
+
 					<div class="grid">
 						{#each terms as term}
 							<div class="row">
 								<div class="term">{term}</div>
 								<div class="cells">
 									{#each Array.from({ length: 5 }) as _, i}
-										{@const row = profile.semester_plan.find((r) => r.term === term)}
+										{@const row = displayProfile.semester_plan.find((r) => r.term === term)}
 										{@const code = row?.course_codes[i]}
-										<button type="button" class="cell" disabled={!code} on:click={() => code && openCourseByCode(code)}>
-											{#if code}
-												<div class="code">{code}</div>
-												<div class="name">{mapped.get(code)?.course_name || 'Name not available'}</div>
-											{:else}
-												<div class="empty">-</div>
-											{/if}
-										</button>
+									{@const fbState = code ? displayFeedback[code] : null}
+									{@const fbClass = fbState ? FEEDBACK_CSS_CLASS[fbState] : ''}
+									<div
+										class="cell-wrap {fbClass}"
+										class:cell-wrap-active={Boolean(fbState)}
+									>
+											<button
+												type="button"
+												class="cell"
+												disabled={!code}
+												on:click={() => code && openCourseByCode(code, displayProfile)}
+											>
+												{#if code}
+													<div class="code">{code}</div>
+													<div class="name">{mapped.get(code)?.course_name || 'Name not available'}</div>
+												{:else}
+													<div class="empty">-</div>
+												{/if}
+											</button>
+										{#if code && !isReadOnly}
+											<button
+												type="button"
+												class="gear-btn"
+												class:gear-active={Boolean(currentFeedback[code])}
+												on:click={(e) => openSlotEditor(code, e)}
+												aria-label="Edit feedback for {code}"
+												title="Set feedback for {code}"
+											>⚙</button>
+										{/if}
+										</div>
 									{/each}
 								</div>
 							</div>
@@ -300,6 +744,77 @@ let loadingDots = '.';
 					</div>
 				</section>
 
+			<!-- ── Feedback memory panel (collapsible, shown in both modes) ── -->
+			<section class="card feedback-panel">
+				<button
+					type="button"
+					class="panel-toggle"
+					on:click={() => (feedbackPanelOpen = !feedbackPanelOpen)}
+					aria-expanded={feedbackPanelOpen}
+				>
+					<span>
+						Feedback Summary
+						{#if isReadOnly}<span class="panel-readonly-badge">read-only</span>{/if}
+					</span>
+					<span class="panel-chevron" class:open={feedbackPanelOpen}>▼</span>
+				</button>
+				{#if feedbackPanelOpen}
+					<div class="panel-body">
+						{#if !hasDisplayFeedback}
+							<p class="panel-empty">
+								{#if isReadOnly}
+									No feedback was set for this iteration.
+								{:else}
+									No feedback applied yet. Click <span class="panel-gear-hint">⚙</span> on any course slot to add feedback.
+								{/if}
+							</p>
+						{:else}
+							{#if !isReadOnly && hasFeedback}
+								<div class="panel-actions-row">
+									<button
+										type="button"
+										class="btn-clear-all"
+										on:click={clearAllFeedback}
+										title="Remove all feedback"
+									>✕ Clear all feedback</button>
+								</div>
+							{/if}
+							{#each (['LOCK', 'EXCLUDE', 'LIKE', 'DISLIKE'] as const) as state}
+								{@const entries = feedbackByState[state]}
+								{#if entries.length > 0}
+									<div class="panel-group">
+										<div class="panel-group-label {FEEDBACK_CSS_CLASS[state]}">
+											{state === 'LOCK' ? '🔒' : state === 'EXCLUDE' ? '❌' : state === 'LIKE' ? '👍' : '👎'}
+											{state === 'LOCK' ? 'Locked' : state === 'EXCLUDE' ? 'Excluded' : state === 'LIKE' ? 'Liked' : 'Disliked'}
+											({entries.length})
+										</div>
+										<div class="panel-entries">
+											{#each entries as code}
+												<div class="panel-entry">
+													<span class="panel-code">{code}</span>
+													<span class="panel-name">
+														{mapped.get(code)?.course_name ?? courseNameCache[code] ?? ''}
+													</span>
+													{#if !isReadOnly}
+														<button
+															type="button"
+															class="panel-remove"
+															on:click={() => removeFeedback(code)}
+															aria-label="Remove feedback for {code}"
+														>✕</button>
+													{/if}
+												</div>
+											{/each}
+										</div>
+									</div>
+								{/if}
+							{/each}
+						{/if}
+					</div>
+				{/if}
+			</section>
+
+				<!-- ── Graduation requirements ───────────────────────────────── -->
 				<section class="card">
 					<h3>Graduation requirements</h3>
 					<h4>Program requirements</h4>
@@ -317,7 +832,7 @@ let loadingDots = '.';
 															<th>Area {area}</th>
 															<td class="req-courses">
 																{#each courses as c}
-																	<button type="button" on:click={() => openCourseByCode(c.course_code)}>{c.course_code}</button>
+																	<button type="button" on:click={() => openCourseByCode(c.course_code, displayProfile)}>{c.course_code}</button>
 																{/each}
 															</td>
 														</tr>
@@ -329,40 +844,40 @@ let loadingDots = '.';
 								</tr>
 								<tr>
 									<th>Engineering Economics</th>
-									<td>{#if buckets?.engEcon[0]}<button type="button" on:click={() => openCourseByCode(buckets.engEcon[0].course_code)}>{buckets.engEcon[0].course_code}</button>{/if}</td>
+									<td>{#if buckets?.engEcon[0]}<button type="button" on:click={() => openCourseByCode(buckets.engEcon[0].course_code, displayProfile)}>{buckets.engEcon[0].course_code}</button>{/if}</td>
 								</tr>
 								<tr>
 									<th>Capstone</th>
-									<td>{#each buckets?.capstone || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code)}>{c.course_code}</button>{/each}</td>
+									<td>{#each buckets?.capstone || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code, displayProfile)}>{c.course_code}</button>{/each}</td>
 								</tr>
 								<tr>
 									<th>Science/Math</th>
-									<td>{#each buckets?.sciMath || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code)}>{c.course_code}</button>{/each}</td>
+									<td>{#each buckets?.sciMath || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code, displayProfile)}>{c.course_code}</button>{/each}</td>
 								</tr>
 								<tr>
 									<th>Technical Electives</th>
-									<td>{#each buckets?.technicalElectives || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code)}>{c.course_code}</button>{/each}</td>
+									<td>{#each buckets?.technicalElectives || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code, displayProfile)}>{c.course_code}</button>{/each}</td>
 								</tr>
 								<tr>
 									<th>HSS and CS</th>
-									<td>{#each buckets?.hsscs || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code)}>{c.course_code}</button>{/each}</td>
+									<td>{#each buckets?.hsscs || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code, displayProfile)}>{c.course_code}</button>{/each}</td>
 								</tr>
 								<tr>
 									<th>Free Elective</th>
-									<td>{#each buckets?.free || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code)}>{c.course_code}</button>{/each}</td>
+									<td>{#each buckets?.free || [] as c}<button type="button" on:click={() => openCourseByCode(c.course_code, displayProfile)}>{c.course_code}</button>{/each}</td>
 								</tr>
 							</tbody>
 						</table>
 					</div>
 
 					<h4>CEAB requirements</h4>
-					{#if profile.constraint_diagnostics?.ceab_summary?.length}
+					{#if displayProfile.constraint_diagnostics?.ceab_summary?.length}
 						<table class="ceab">
 							<thead>
 								<tr><th>Attribute</th><th>Required</th><th>Achieved</th><th>Status</th></tr>
 							</thead>
 							<tbody>
-								{#each profile.constraint_diagnostics.ceab_summary as row}
+								{#each displayProfile.constraint_diagnostics.ceab_summary as row}
 									<tr>
 										<td>{row.label}</td>
 										<td>{row.required.toFixed(1)}</td>
@@ -377,17 +892,18 @@ let loadingDots = '.';
 					{/if}
 				</section>
 
+				<!-- ── Preference matching ──────────────────────────────────── -->
 				<section class="card">
 					<h3>Preference matching</h3>
 					<p class="note">These courses were produced by the ranking engine based on your interests.</p>
 					<div class="pref-columns">
 						<div>
-							<h4>Included ({profile.preferences_used.length})</h4>
-							<div class="chips">{#each profile.preferences_used as p}<span class="ok-chip">{p}</span>{/each}</div>
+							<h4>Included ({displayProfile.preferences_used.length})</h4>
+							<div class="chips">{#each displayProfile.preferences_used as p}<span class="ok-chip">{p}</span>{/each}</div>
 						</div>
 						<div>
-							<h4>Skipped ({profile.preferences_skipped.length})</h4>
-							<div class="chips">{#each profile.preferences_skipped as p}<span class="bad-chip">{p}</span>{/each}</div>
+							<h4>Skipped ({displayProfile.preferences_skipped.length})</h4>
+							<div class="chips">{#each displayProfile.preferences_skipped as p}<span class="bad-chip">{p}</span>{/each}</div>
 						</div>
 					</div>
 				</section>
@@ -396,11 +912,25 @@ let loadingDots = '.';
 			<div class="empty">Enter your interests to generate a profile.</div>
 		{/if}
 	</section>
-
-	<CourseDetailsModal course={selectedCourse} onClose={() => (selectedCourse = null)} />
 </main>
 
+<!-- Course detail modal (existing) -->
+<CourseDetailsModal course={selectedCourse} onClose={() => (selectedCourse = null)} />
+
+<!-- Slot editor floating popup -->
+{#if slotEditorCode && !isReadOnly}
+	<SlotEditor
+		course={mapped.get(slotEditorCode) ?? null}
+		currentState={currentFeedback[slotEditorCode] ?? null}
+		isCapstone={isCapstoneCode(slotEditorCode)}
+		anchorRect={slotEditorAnchorRect}
+		onSet={(state) => handleSlotEditorSet(slotEditorCode!, state)}
+		onClose={closeSlotEditor}
+	/>
+{/if}
+
 <style>
+	/* ── Layout ──────────────────────────────────────────────────────────────── */
 	.page { max-width: 1180px; margin: 0 auto; padding: 22px 18px 36px; display: grid; gap: 14px; }
 	.prompt-panel, .results .card, .loading-card, .error, .empty { background: white; border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-sm); }
 	.prompt-panel { padding: 18px; }
@@ -421,10 +951,22 @@ let loadingDots = '.';
 	.loading-card { display: flex; align-items: center; gap: 10px; }
 	.loading-title { font-weight: 700; color: var(--text); margin: 0 0 4px; }
 	.loading-time { margin: 0; color: var(--text-muted); font-size: .86rem; }
-	.spinner { width: 24px; height: 24px; border: 3px solid #dbe4f4; border-top-color: #2563eb; border-radius: 999px; animation: spin .8s linear infinite; }
+	/* Compact inline loading card used while regenerating (profile stays visible below) */
+	.regen-loading-card {
+		background: #eff6ff;
+		border-color: #93c5fd;
+		padding: 10px 14px;
+		border-radius: 10px;
+	}
+	.regen-loading-card .loading-title { font-size: .88rem; color: #1e40af; }
+	.regen-loading-card .loading-time { font-size: .78rem; }
+	.regen-loading-card .spinner { width: 18px; height: 18px; border-width: 2.5px; }
+	.spinner { width: 24px; height: 24px; border: 3px solid #dbe4f4; border-top-color: #2563eb; border-radius: 999px; animation: spin .8s linear infinite; flex-shrink: 0; }
 	@keyframes spin { to { transform: rotate(360deg); } }
 	.stack { display: grid; gap: 12px; }
 	.card { padding: 14px; }
+
+	/* ── Stats ──────────────────────────────────────────────────────────────── */
 	.stats { display:grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 8px; }
 	.stats > div { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: #f8faff; }
 	.stats span { display:block; font-size:.75rem; color: var(--text-muted); }
@@ -432,16 +974,344 @@ let loadingDots = '.';
 	.status-bad { color: #b42318; }
 	.constraint-cell-ok { background: #e8fbef !important; border-color: #b7ebca !important; }
 	.constraint-cell-bad { background: #fdecec !important; border-color: #f9c2c2 !important; }
+
+	/* ── History navigation bar ─────────────────────────────────────────────── */
+	.nav-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		flex-wrap: wrap;
+		background: white;
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		padding: 9px 14px;
+		box-shadow: var(--shadow-sm);
+	}
+	.nav-bar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+	/* ── Feedback action bar ─────────────────────────────────────────────────── */
+	.feedback-actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 8px;
+		flex-wrap: wrap;
+		background: white;
+		border: 1px solid var(--border);
+		border-radius: 12px;
+		padding: 10px 14px;
+		box-shadow: var(--shadow-sm);
+	}
+	.fa-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+	.history-label { font-size: .78rem; color: var(--text-muted); }
+	.history-select {
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 5px 8px;
+		font-size: .78rem;
+		background: #f8faff;
+		color: var(--text);
+		cursor: pointer;
+	}
+
+	.btn-fresh {
+		background: #f8faff;
+		color: var(--text);
+		border: 1px solid var(--border);
+		font-size: .82rem;
+		padding: 7px 12px;
+		cursor: pointer;
+	}
+	.btn-fresh:hover:not(:disabled) { background: #eef3ff; border-color: #c8dcff; }
+
+	.btn-regen {
+		background: #2563eb;
+		color: white;
+		border: none;
+		font-size: .82rem;
+		padding: 7px 14px;
+		cursor: pointer;
+	}
+	.btn-regen:hover:not(:disabled) { background: #1d4ed8; }
+
+	/* ── Notice banners ─────────────────────────────────────────────────────── */
+	.notice-banner {
+		border-radius: 10px;
+		padding: 10px 14px;
+		font-size: .84rem;
+		border: 1px solid;
+	}
+	.notice-info { background: #eff6ff; border-color: #93c5fd; color: #1e40af; }
+	.notice-warn { background: #fffbeb; border-color: #fbbf24; color: #78350f; }
+
+	/* ── Read-only banner ───────────────────────────────────────────────────── */
+	.readonly-banner {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: #f0f9ff;
+		border: 1px solid #bae6fd;
+		border-radius: 10px;
+		padding: 10px 14px;
+		font-size: .84rem;
+		color: #0c4a6e;
+	}
+	/* "Back to current" button now lives in the nav-bar */
+	.btn-back-current {
+		background: #0ea5e9;
+		color: white;
+		border: none;
+		font-size: .78rem;
+		padding: 6px 12px;
+		cursor: pointer;
+		border-radius: 8px;
+		white-space: nowrap;
+	}
+	.btn-back-current:hover { background: #0284c7; }
+
+	/* ── Honor report ──────────────────────────────────────────────────────── */
+	.honor-report {
+		background: #f8faff;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		padding: 10px 14px;
+		font-size: .82rem;
+	}
+	.honor-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-weight: 600;
+		margin-bottom: 8px;
+		color: var(--text-muted);
+		font-size: .78rem;
+		text-transform: uppercase;
+		letter-spacing: .3px;
+	}
+	.honor-close {
+		background: none;
+		border: none;
+		color: var(--text-muted);
+		font-size: .75rem;
+		padding: 2px 5px;
+		cursor: pointer;
+		border-radius: 4px;
+	}
+	.honor-close:hover { background: #eef3ff; }
+	.honor-row { padding: 3px 0; }
+	.honor-ok { color: #0f7a3f; }
+	.honor-skip { color: #b42318; }
+	.honor-force { color: #92400e; }
+
+	/* ── Grid header ─────────────────────────────────────────────────────────── */
+	.grid-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+	.grid-header h3 { margin: 0; }
+	.grid-header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+	/* ── Clear all button ───────────────────────────────────────────────────── */
+	.btn-clear-all {
+		background: #fff1f2;
+		color: #be123c;
+		border: 1px solid #fda4af;
+		border-radius: 8px;
+		font-size: .72rem;
+		font-weight: 600;
+		padding: 4px 10px;
+		cursor: pointer;
+		transition: background 0.12s, border-color 0.12s;
+		white-space: nowrap;
+	}
+	.btn-clear-all:hover { background: #ffe4e6; border-color: #fb7185; }
+
+	/* ── Feedback legend ────────────────────────────────────────────────────── */
+	.feedback-legend {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+	.leg-item {
+		border-radius: 999px;
+		padding: 3px 9px;
+		font-size: .7rem;
+		font-weight: 600;
+		border: 1.5px solid;
+	}
+	.leg-lock    { background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; }
+	.leg-exclude { background: #fee2e2; border-color: #ef4444; color: #b91c1c; }
+	.leg-like    { background: #dcfce7; border-color: #22c55e; color: #15803d; }
+	.leg-dislike { background: #ffedd5; border-color: #f97316; color: #c2410c; }
+
+	/* ── Semester grid ──────────────────────────────────────────────────────── */
 	.grid { border:1px solid var(--border); border-radius: 10px; overflow: hidden; }
 	.row { display:grid; grid-template-columns: 58px 1fr; border-top:1px solid var(--border); }
 	.row:first-child { border-top: 0; }
 	.term { background:#f3f6fd; border-right:1px solid var(--border); display:grid; place-items:center; font-weight:700; }
 	.cells { display:grid; grid-template-columns: repeat(5,minmax(0,1fr)); }
-	.cell { border-left:1px solid var(--border); min-height:78px; padding:8px; text-align:left; border-radius:0; background:white; color: var(--text); }
-	.cells .cell:first-child { border-left:0; }
-	.cell:hover:enabled { background:#eef4ff; }
+
+	/* Cell wrapper: handles colour tinting per feedback state */
+	.cell-wrap {
+		position: relative;
+		border-left: 1px solid var(--border);
+		background: white;
+		transition: background 0.15s;
+	}
+	.cells .cell-wrap:first-child { border-left: 0; }
+
+	/* Feedback state tints */
+	.cell-wrap.fb-lock    { background: #dbeafe; }
+	.cell-wrap.fb-exclude { background: #fee2e2; }
+	.cell-wrap.fb-like    { background: #dcfce7; }
+	.cell-wrap.fb-dislike { background: #ffedd5; }
+
+	/* Left accent stripe for feedback states */
+	.cell-wrap.fb-lock::before    { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#3b82f6; }
+	.cell-wrap.fb-exclude::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#ef4444; }
+	.cell-wrap.fb-like::before    { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#22c55e; }
+	.cell-wrap.fb-dislike::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#f97316; }
+
+	.cell {
+		width: 100%;
+		min-height: 78px;
+		padding: 8px;
+		text-align: left;
+		border-radius: 0;
+		background: transparent;
+		color: var(--text);
+		border: none;
+	}
+	.cell:hover:enabled { background: rgba(59,130,246,0.06); cursor: pointer; }
 	.code { font-weight:700; font-size:.84rem; }
 	.name { font-size:.76rem; color:var(--text-muted); margin-top:4px; }
+
+	/* Gear button — always visible, but more prominent on hover */
+	.gear-btn {
+		position: absolute;
+		top: 3px;
+		right: 3px;
+		width: 26px;
+		height: 26px;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--text-muted);
+		font-size: .9rem;
+		padding: 0;
+		display: grid;
+		place-items: center;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 0.15s, background 0.12s, border-color 0.12s;
+		line-height: 1;
+	}
+	/* Show gear on hover over the cell-wrap */
+	.cell-wrap:hover .gear-btn { opacity: 1; }
+	.gear-btn:hover { background: #eef3ff; border-color: #c8dcff; color: #2563eb; }
+	/* Always visible when feedback is active */
+	.gear-btn.gear-active { opacity: 1; }
+
+	/* ── Feedback memory panel ───────────────────────────────────────────────── */
+	.feedback-panel { padding: 0; }
+	.panel-toggle {
+		width: 100%;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 12px 14px;
+		background: none;
+		border: none;
+		color: var(--text);
+		font-weight: 600;
+		font-size: .9rem;
+		cursor: pointer;
+		border-radius: 12px;
+		text-align: left;
+	}
+	.panel-toggle:hover { background: #f8faff; }
+	.panel-chevron { font-size: .7rem; color: var(--text-muted); transition: transform 0.18s; }
+	.panel-chevron.open { transform: rotate(180deg); }
+
+	.panel-body { padding: 0 14px 14px; }
+	.panel-empty { color: var(--text-muted); font-size: .82rem; margin: 0; }
+
+	/* Read-only badge in panel toggle */
+	.panel-readonly-badge {
+		display: inline-block;
+		margin-left: 8px;
+		background: #f0f9ff;
+		color: #0369a1;
+		border: 1px solid #bae6fd;
+		border-radius: 999px;
+		font-size: .65rem;
+		font-weight: 600;
+		padding: 1px 7px;
+		text-transform: uppercase;
+		letter-spacing: .3px;
+		vertical-align: middle;
+	}
+
+	/* Row at the top of the panel body for panel-level actions */
+	.panel-actions-row {
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: 10px;
+	}
+
+	/* Big gear hint inside the panel empty text */
+	.panel-gear-hint {
+		font-size: 1rem;
+		vertical-align: middle;
+	}
+
+	.panel-group { margin-bottom: 10px; }
+	.panel-group:last-child { margin-bottom: 0; }
+
+	.panel-group-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: .72rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: .4px;
+		margin-bottom: 6px;
+		padding: 3px 8px;
+		border-radius: 999px;
+		border: 1.5px solid;
+	}
+	.panel-group-label.fb-lock    { background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; }
+	.panel-group-label.fb-exclude { background: #fee2e2; border-color: #ef4444; color: #b91c1c; }
+	.panel-group-label.fb-like    { background: #dcfce7; border-color: #22c55e; color: #15803d; }
+	.panel-group-label.fb-dislike { background: #ffedd5; border-color: #f97316; color: #c2410c; }
+
+	.panel-entries { display: flex; flex-direction: column; gap: 4px; }
+	.panel-entry {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 5px 8px;
+		background: #f8faff;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+	}
+	.panel-code { font-weight: 700; font-size: .82rem; flex-shrink: 0; }
+	.panel-name { font-size: .75rem; color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.panel-remove {
+		flex-shrink: 0;
+		background: none;
+		border: 1px solid var(--border);
+		border-radius: 5px;
+		padding: 2px 6px;
+		font-size: .68rem;
+		color: var(--text-muted);
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+	.panel-remove:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+
+	/* ── Requirements table ─────────────────────────────────────────────────── */
 	.program-table-wrap, .ceab { overflow: auto; border:1px solid var(--border); border-radius:10px; }
 	.program-table, .ceab { width:100%; border-collapse: collapse; }
 	th, td { border-bottom:1px solid var(--border); padding:10px; text-align:left; vertical-align: top; }
@@ -450,10 +1320,12 @@ let loadingDots = '.';
 	.kernel-table { width: 100%; border-collapse: collapse; }
 	.kernel-table th, .kernel-table td { border-bottom: 1px solid var(--border); padding: 8px; }
 	.kernel-table th { width: 84px; background: #fbfcff; font-size: .78rem; color: var(--text-muted); text-transform: none; letter-spacing: 0; }
-	td button { background:#eef3ff; color:#1d4ed8; border:1px solid #c8dcff; padding:6px 10px; border-radius:999px; font-size:.78rem; }
+	td button { background:#eef3ff; color:#1d4ed8; border:1px solid #c8dcff; padding:6px 10px; border-radius:999px; font-size:.78rem; cursor: pointer; }
 	.ceab th, .ceab td { width: auto; display: table-cell; }
 	.ceab-ok-text { color:#0f7a3f; font-weight: 600; }
 	.ceab-bad-text { color:#b42318; font-weight: 600; }
+
+	/* ── Preference matching ─────────────────────────────────────────────────── */
 	.note { font-size:.84rem; }
 	.pref-columns { display:grid; gap:10px; grid-template-columns:repeat(2,minmax(0,1fr)); }
 	.chips { display:flex; gap:6px; flex-wrap:wrap; }
@@ -461,5 +1333,14 @@ let loadingDots = '.';
 	.selected-year2 { background:#eef3ff; color:#1d4ed8; border-color:#c8dcff; font-weight: 700; }
 	.ok-chip { background:#e8fbef; color:#0f7a3f; border-color:#b7ebca; }
 	.bad-chip { background:#fdecec; color:#b42318; border-color:#f9c2c2; }
-	@media (max-width: 980px){ .pref-columns{ grid-template-columns:1fr; } .row{ grid-template-columns:46px 1fr; } .name{ display:none; } }
+
+	/* ── Responsive ─────────────────────────────────────────────────────────── */
+	@media (max-width: 980px) {
+		.pref-columns { grid-template-columns: 1fr; }
+		.row { grid-template-columns: 46px 1fr; }
+		.name { display: none; }
+		.fa-right { width: 100%; justify-content: flex-end; }
+		.nav-bar { flex-direction: column; align-items: flex-start; }
+		.grid-header-right { width: 100%; justify-content: flex-start; }
+	}
 </style>

@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root))
 
 from backend.ranking_engine.rag_model import rag_model
 from backend.data_bridge.factory import get_catalog_bridge
-from backend.profile_generator.profile_generator import ProfileGenerator
+from backend.profile_generator.profile_generator import ProfileGenerator, SolverTimeoutError, SolverInfeasibleError
 from backend.profile_generator.profile_course_loader import ProfileCourseLoader
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
 from backend.constraint_verifier.constraint_schema import normalize_constraints
@@ -51,6 +51,15 @@ try:
         print("Warning: no profile courses found in catalog. Run data pipeline migration/upserts first.")
     course_lookup = load_course_details_index(bridge=catalog_bridge)
     profile_generator = ProfileGenerator(profile_courses)
+    # Pre-compute required non-capstone codes for feedback validation (SSOT: is_required flag)
+    _required_noncap_codes: frozenset[str] = frozenset(
+        c.course_code for c in profile_courses
+        if bool(getattr(c, "is_required", False)) and c.term != "Y"
+    )
+    _capstone_codes_pool: frozenset[str] = frozenset(
+        c.course_code for c in profile_courses
+        if bool(getattr(c, "is_required", False)) and c.term == "Y"
+    )
     print("[ProfileGen] Strategy: cp_sat")
     print("✓ Data loaded successfully")
 except Exception as e:
@@ -59,6 +68,8 @@ except Exception as e:
     profile_courses = []
     course_lookup = {}
     profile_generator = None
+    _required_noncap_codes: frozenset[str] = frozenset()
+    _capstone_codes_pool: frozenset[str] = frozenset()
 
 
 class UserInterestRequest(BaseModel):
@@ -145,6 +156,50 @@ class ConstraintsDisplayResponse(BaseModel):
     ceab_es: float
     ceab_ed: float
     ceab_es_ed: float
+
+
+class FeedbackPayload(BaseModel):
+    locked: list[str] = []
+    excluded: list[str] = []
+    liked: list[str] = []
+    disliked: list[str] = []
+
+
+class RegenerateProfileRequest(BaseModel):
+    interests: str = Field(default="", max_length=2000)
+    num_recommendations: int = Field(default=15, ge=1, le=30)
+    year12_choice: str | None = None
+    preferences: list[str] = Field(default_factory=list)
+    feedback: FeedbackPayload = Field(default_factory=FeedbackPayload)
+
+
+class FeedbackHonorReport(BaseModel):
+    liked_honored: list[str] = []
+    liked_skipped: list[str] = []
+    # DISLIKE (soft penalty, Option A): honored = not placed, forced = still placed
+    disliked_honored: list[str] = []
+    disliked_forced: list[str] = []
+
+
+class RegenerateProfileResponse(BaseModel):
+    success: bool
+    courses: list[CourseInfo] = []
+    semester_plan: list[SemesterPlanRow] = []
+    total_credits: float = 0.0
+    kernel_areas_selected: list[int] = []
+    depth_areas_selected: list[int] = []
+    preferences_used: list[str] = []
+    preferences_skipped: list[str] = []
+    constraints_satisfied: bool = False
+    generation_engine: str | None = None
+    solver_runtime_ms: float | None = None
+    preference_hit_count: int | None = None
+    preference_weighted_score: int | None = None
+    constraint_diagnostics: dict | None = None
+    error: str | None = None
+    feedback_result: FeedbackHonorReport | None = None
+    timed_out: bool = False
+    feedback_infeasible: bool = False
 
 
 class InMemoryRateLimiter:
@@ -464,6 +519,157 @@ async def search_courses(
         )
 
     return CourseSearchResponse(success=True, courses=courses[:limit])
+
+
+@app.post("/regenerate-profile", response_model=RegenerateProfileResponse)
+async def regenerate_profile(request: Request, payload: RegenerateProfileRequest):
+    """
+    Regenerate a profile applying feedback (LOCK / EXCLUDE / LIKE / DISLIKE) on top of
+    the original ranked preference list.
+
+    Unlike /generate-profile, this endpoint does NOT call the ranking engine (RAG model).
+    The caller is responsible for passing the original preferences list that was returned
+    by the initial /generate-profile call.
+
+    Solver timeout is 15 seconds (vs. 8 seconds for initial generation) to accommodate
+    the additional hard constraints introduced by feedback.
+    """
+    if not profile_generator:
+        raise HTTPException(status_code=500, detail="Backend not initialized properly")
+
+    client_ip = _extract_client_ip(request)
+    if not rate_limiter.check(client_ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again shortly.")
+
+    feedback = payload.feedback
+    locked_set = {c.strip().upper() for c in feedback.locked if c.strip()}
+    excluded_set = {c.strip().upper() for c in feedback.excluded if c.strip()}
+    liked_list = [c.strip().upper() for c in feedback.liked if c.strip()]
+    disliked_list = [c.strip().upper() for c in feedback.disliked if c.strip()]
+
+    # Validate: a course cannot be both LOCK and EXCLUDE simultaneously.
+    conflicts = locked_set & excluded_set
+    if conflicts:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot LOCK and EXCLUDE the same course(s): {', '.join(sorted(conflicts))}",
+        )
+
+    # Validate: required non-capstone courses (e.g. ECE472H1) cannot be EXCLUDED
+    # because the solver's hard constraints always force them to be selected.
+    excluded_required = excluded_set & _required_noncap_codes
+    if excluded_required:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot EXCLUDE required course(s): {', '.join(sorted(excluded_required))}. "
+                   "These courses are mandatory in every valid ECE profile.",
+        )
+
+    # Validate: at least one capstone option must remain available.
+    if _capstone_codes_pool and _capstone_codes_pool.issubset(excluded_set):
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot EXCLUDE all capstone options. At least one capstone must remain available.",
+        )
+
+    try:
+        result = profile_generator.generate_profile(
+            seed=None,
+            preferences=payload.preferences,
+            year12_choice=payload.year12_choice,
+            locked_codes=list(locked_set),
+            excluded_codes=list(excluded_set),
+            liked_codes=liked_list,
+            disliked_codes=disliked_list,
+            timeout_seconds=15.0,
+        )
+    except SolverTimeoutError as exc:
+        return RegenerateProfileResponse(
+            success=False,
+            timed_out=True,
+            error=str(exc),
+        )
+    except SolverInfeasibleError as exc:
+        return RegenerateProfileResponse(
+            success=False,
+            feedback_infeasible=True,
+            error=str(exc),
+        )
+    except Exception as exc:
+        print(f"[ERROR] Regeneration failed: {exc}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error regenerating profile: {str(exc)}")
+
+    # Build courses_info (same pattern as /generate-profile)
+    details_by_code: dict[str, object] = {}
+    if catalog_bridge:
+        try:
+            detail_rows = catalog_bridge.get_courses_by_codes(
+                [c.course_code for c in result["courses"]],
+                include_excluded=True,
+            )
+            details_by_code = {row.course_code: row for row in detail_rows}
+        except Exception:
+            details_by_code = {}
+
+    courses_info = []
+    for course in result["courses"]:
+        details = details_by_code.get(course.course_code)
+        course_name = (
+            details.name if details and details.name
+            else course_lookup.get(course.course_code, "Name not available")
+        )
+        courses_info.append(CourseInfo(
+            course_code=course.course_code,
+            course_name=course_name,
+            course_description=details.description if details else None,
+            area=course.area if course.area else -1,
+            term=course.term,
+            num_credits=course.num_credits,
+            kernel_course=course.kernel_course,
+            technical_elective=course.technical_elective,
+            free_elective=bool(getattr(course, "free_elective", False)),
+            course_type=getattr(course, "course_type", None),
+            non_technical_type=getattr(course, "non_technical_type", None),
+            ceab_math=float(getattr(course.ceab, "mathematics", 0.0)),
+            ceab_ns=float(getattr(course.ceab, "natural_science", 0.0)),
+            ceab_cs=float(getattr(course.ceab, "complementary_studies", 0.0)),
+            ceab_es=float(getattr(course.ceab, "engineering_science", 0.0)),
+            ceab_ed=float(getattr(course.ceab, "engineering_design", 0.0)),
+        ))
+
+    labels = ["3F", "3S", "4F", "4S"]
+    semester_plan_payload = [
+        SemesterPlanRow(term=labels[i], course_codes=[c.course_code for c in result["semester_plan"][i]])
+        for i in range(4)
+    ]
+
+    verifier = ConstraintVerifier(result["semester_plan"], year12_choice=payload.year12_choice)
+    constraints_satisfied = verifier.verify()
+
+    return RegenerateProfileResponse(
+        success=True,
+        courses=courses_info,
+        semester_plan=semester_plan_payload,
+        total_credits=result["total_credits"],
+        kernel_areas_selected=result["kernel_areas_selected"],
+        depth_areas_selected=result["depth_areas_selected"],
+        preferences_used=result["preferences_used"],
+        preferences_skipped=result["preferences_skipped"],
+        constraints_satisfied=constraints_satisfied,
+        generation_engine=result.get("generation_engine"),
+        solver_runtime_ms=result.get("solver_runtime_ms"),
+        preference_hit_count=result.get("preference_hit_count"),
+        preference_weighted_score=result.get("preference_weighted_score"),
+        constraint_diagnostics=result.get("constraint_diagnostics"),
+        feedback_result=FeedbackHonorReport(
+            liked_honored=result.get("liked_honored", []),
+            liked_skipped=result.get("liked_skipped", []),
+            disliked_honored=result.get("disliked_honored", []),
+            disliked_forced=result.get("disliked_forced", []),
+        ),
+    )
 
 
 if __name__ == "__main__":

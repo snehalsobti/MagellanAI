@@ -14,6 +14,13 @@ except Exception:  # pragma: no cover - environment dependent
     cp_model = None
     ORTOOLS_AVAILABLE = False
 
+# Flat bonus/penalty applied to the CP-SAT objective for LIKE / DISLIKE feedback.
+# Values are chosen to dominate rank-based preference weights (max ≈ num_recommendations ≤ 30)
+# so that a liked course is always more attractive than any unranked course,
+# and a disliked course is always less attractive.
+_LIKED_BOOST: int = 100
+_DISLIKE_PENALTY: int = 100
+
 
 @dataclass(frozen=True)
 class ProfileSolveResult:
@@ -27,15 +34,43 @@ class GlobalCpSatProfileSolver:
         self.policy = policy
         self.pool = CoursePoolBuilder(courses=courses, exclude_h3_h5=policy.exclude_h3_h5)
 
-    def solve(self, preferred_codes: list[str] | None = None, seed: int | None = None) -> ProfileSolveResult | None:
+    def solve(
+        self,
+        preferred_codes: list[str] | None = None,
+        seed: int | None = None,
+        locked_codes: list[str] | None = None,
+        excluded_codes: list[str] | None = None,
+        liked_codes: list[str] | None = None,
+        disliked_codes: list[str] | None = None,
+        timeout_seconds: float = 8.0,
+    ) -> tuple[ProfileSolveResult | None, str]:
+        """Solve for a feasible course profile satisfying all ECE constraints.
+
+        Returns ``(result, status)`` where ``status`` is one of:
+        - ``'ok'``         – feasible or optimal solution found
+        - ``'timeout'``    – solver ran out of time (CP-SAT UNKNOWN status)
+        - ``'infeasible'`` – constraints cannot be simultaneously satisfied
+        - ``'error'``      – non-solver error (missing data, OR-Tools unavailable, etc.)
+
+        Feedback parameters (all optional):
+        - ``locked_codes``   – hard constraint: each code must appear in the output
+        - ``excluded_codes`` – hard constraint: each code must NOT appear in the output
+        - ``liked_codes``    – soft boost: each code receives a large positive objective weight
+        - ``disliked_codes`` – soft penalty: each code receives a large negative objective weight
+        """
         if not ORTOOLS_AVAILABLE:
-            return None
+            return None, 'error'
 
         preferred_list = preferred_codes or []
         preferred_rank = {code: idx for idx, code in enumerate(preferred_list)}
+        locked_set = set(locked_codes or [])
+        excluded_set = set(excluded_codes or [])
+        liked_set = set(liked_codes or [])
+        disliked_set = set(disliked_codes or [])
+
         capstone_codes = self.pool.capstone_codes()
         if not capstone_codes:
-            return None
+            return None, 'error'
 
         noncap_offerings = [
             c for c in self.courses
@@ -45,7 +80,7 @@ class GlobalCpSatProfileSolver:
             and not bool(getattr(c, "is_year1_year2", False))
         ]
         if not noncap_offerings:
-            return None
+            return None, 'error'
 
         # Deduplicate exact duplicates while preserving multi-area variants
         # for the same (code, term), which are meaningful in constraints.
@@ -117,8 +152,29 @@ class GlobalCpSatProfileSolver:
         required_noncap = self.pool.required_non_capstone_codes()
         for code in required_noncap:
             if code not in y:
-                return None
+                return None, 'infeasible'
             model.Add(y[code] == 1)
+
+        # ── Feedback hard constraints ──────────────────────────────────────────
+        # LOCK: each code must be selected. If a locked code is not in the pool
+        # at all (neither a non-capstone course nor a capstone), the problem is
+        # immediately infeasible — the course cannot possibly be placed.
+        for code in locked_set:
+            if code not in y and code not in cap_vars:
+                return None, 'infeasible'
+            if code in y:
+                model.Add(y[code] == 1)
+            if code in cap_vars:
+                model.Add(cap_vars[code] == 1)
+
+        # EXCLUDE: each code must NOT be selected.
+        # Silently skip codes that are not in the pool (no constraint needed).
+        for code in excluded_set:
+            if code in y:
+                model.Add(y[code] == 0)
+            if code in cap_vars:
+                model.Add(cap_vars[code] == 0)
+        # ──────────────────────────────────────────────────────────────────────
 
         # Build representative attributes by code.
         rep_by_code: dict[str, Course] = {}
@@ -142,7 +198,7 @@ class GlobalCpSatProfileSolver:
             breadth_bools.append(b)
             depth_bools.append(d)
         if not breadth_bools or not depth_bools:
-            return None
+            return None, 'error'
         model.Add(sum(breadth_bools) >= self.policy.min_breadth_areas)
         model.Add(sum(depth_bools) >= self.policy.min_depth_areas)
 
@@ -262,31 +318,46 @@ class GlobalCpSatProfileSolver:
                 )
                 model.Add(lhs_noncap + lhs_cap >= rhs)
 
-        # Soft objective: maximize preferred picks.
+        # ── Soft objective: preference rank + LIKE boost − DISLIKE penalty ──────
+        # The objective uses integer weights. _LIKED_BOOST and _DISLIKE_PENALTY are
+        # large flat constants (100) that dominate any rank-based weight so that:
+        #   - A liked course is always preferred over any unranked course.
+        #   - A disliked course is always less preferred, but is included if required
+        #     by hard constraints (Option A: safe soft penalty, never causes infeasibility).
         objective = []
         total_pref = len(preferred_list)
         for code in y.keys():
             if code in preferred_rank:
                 objective.append((total_pref - preferred_rank[code]) * y[code])
+            if code in liked_set:
+                objective.append(_LIKED_BOOST * y[code])
+            if code in disliked_set:
+                objective.append(-_DISLIKE_PENALTY * y[code])
         for code in cap_vars.keys():
             if code in preferred_rank:
                 objective.append((total_pref - preferred_rank[code]) * cap_vars[code])
+            if code in liked_set:
+                objective.append(_LIKED_BOOST * cap_vars[code])
+            if code in disliked_set:
+                objective.append(-_DISLIKE_PENALTY * cap_vars[code])
         if objective:
             model.Maximize(sum(objective))
 
         solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = 8.0
+        solver.parameters.max_time_in_seconds = timeout_seconds
         solver.parameters.num_search_workers = 1
         if seed is not None:
             solver.parameters.random_seed = int(seed)
         status = solver.Solve(model)
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            return None
+            if status == cp_model.INFEASIBLE:
+                return None, 'infeasible'
+            return None, 'timeout'
 
         cap_code = next(code for code, v in cap_vars.items() if solver.Value(v) == 1)
         capstone = next((c for c in self.courses if c.course_code == cap_code and c.term == "Y"), None)
         if capstone is None:
-            return None
+            return None, 'error'
 
         semester_plan: list[list[Course]] = [[], [], [], []]
         # Place capstone in the year-4 semesters (read from SSOT via policy)
@@ -301,7 +372,7 @@ class GlobalCpSatProfileSolver:
                     break
 
         if not all(len(semester_plan[t]) == self.policy.slots_per_term for t in range(4)):
-            return None
+            return None, 'error'
 
         unique = []
         seen_codes = set()
@@ -311,5 +382,4 @@ class GlobalCpSatProfileSolver:
                     continue
                 seen_codes.add(c.course_code)
                 unique.append(c)
-        return ProfileSolveResult(semester_plan=semester_plan, selected_courses=unique)
-
+        return ProfileSolveResult(semester_plan=semester_plan, selected_courses=unique), 'ok'

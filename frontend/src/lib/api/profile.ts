@@ -1,5 +1,10 @@
 import { env } from '$env/dynamic/public';
-import type { GenerateProfilePayload, ProfileResponse } from '$lib/types/profile';
+import type {
+	GenerateProfilePayload,
+	ProfileResponse,
+	RegenerateProfilePayload,
+	RegenerateProfileResponse
+} from '$lib/types/profile';
 
 const API_BASE_URL = env.PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -25,6 +30,32 @@ export async function generateProfile(payload: GenerateProfilePayload): Promise<
 	});
 
 	const data = (await response.json().catch(() => ({}))) as ProfileResponse & { detail?: unknown };
+
+	if (!response.ok) {
+		throw new Error(toMessage(response.status, data.detail));
+	}
+
+	return data;
+}
+
+/**
+ * Regenerate a profile applying feedback constraints.
+ * Does NOT call the ranking engine — uses the provided preferences list directly.
+ * Returns a structured response that may carry timed_out or feedback_infeasible flags
+ * instead of throwing on solver failure.
+ */
+export async function regenerateProfile(
+	payload: RegenerateProfilePayload
+): Promise<RegenerateProfileResponse> {
+	const response = await fetch(`${API_BASE_URL}/regenerate-profile`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
+
+	const data = (await response.json().catch(() => ({}))) as RegenerateProfileResponse & {
+		detail?: unknown;
+	};
 
 	if (!response.ok) {
 		throw new Error(toMessage(response.status, data.detail));

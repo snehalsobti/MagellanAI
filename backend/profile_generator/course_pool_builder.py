@@ -8,10 +8,18 @@ from backend.types.course import Course
 @dataclass(frozen=True)
 class CoursePoolBuilder:
     courses: list[Course]
+    # Read from SSOT (hard_requirements.exclude_h3_h5).  Defaults to True so
+    # that callers that do not yet pass a policy stay safe.
+    exclude_h3_h5: bool = True
 
-    @staticmethod
-    def is_excluded(course: Course) -> bool:
-        return bool(getattr(course, "is_excluded", False)) or course.course_code.endswith("H3") or course.course_code.endswith("H5")
+    def is_excluded(self, course: Course) -> bool:
+        if bool(getattr(course, "is_excluded", False)):
+            return True
+        if self.exclude_h3_h5 and (
+            course.course_code.endswith("H3") or course.course_code.endswith("H5")
+        ):
+            return True
+        return False
 
     @staticmethod
     def is_capstone(course: Course) -> bool:
@@ -36,4 +44,3 @@ class CoursePoolBuilder:
                 and not self.is_excluded(c)
             }
         )
-

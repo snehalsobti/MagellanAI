@@ -97,7 +97,10 @@ class TestConstraintVerifier(unittest.TestCase):
         verifier.constraints["min_free_elective_courses"] = 0
         verifier.constraints["min_technical_elective_courses"] = 0
         verifier.constraints["year3_min_technical_courses"] = 0
-        
+        # This fixture uses a minimal course set (11 courses, not a full 5×4 plan)
+        # to exercise breadth/depth/CEAB logic; disable the per-semester slot check.
+        verifier.constraints["slots_per_term"] = 0
+
         with patch('sys.stdout', new=StringIO()) as fake_out:
             result = verifier.verify()
             output = fake_out.getvalue()
@@ -161,14 +164,37 @@ class TestConstraintVerifierExtended(unittest.TestCase):
         self.assertFalse(v.verify_semester_count())
 
     def test_course_load_overload(self):
+        """Semester with 7 courses fails the exact == 5 slots_per_term check."""
         self._print_header("Courses Overload")
         semesters = self.create_base_valid_semesters()
         
-        # Force 7 courses to be absolutely sure we are over the limit of 6
+        # Force 7 courses to be absolutely sure we are over the limit of 5
         semesters[0] = [Course(f"T{i}", 0.1) for i in range(7)] 
         
         v = ConstraintVerifier(semesters)
         self.assertFalse(v.verify_courses_per_semester())
+
+    def test_courses_per_semester_exact_pass(self):
+        """Semesters with exactly slots_per_term courses each should pass."""
+        self._print_header("Courses Overload")
+        semesters = [[Course(f"T{i}_{s}", 0.5) for i in range(5)] for s in range(4)]
+        v = ConstraintVerifier(semesters)
+        self.assertTrue(v.verify_courses_per_semester())
+
+    def test_courses_per_semester_under_fails(self):
+        """Semesters with fewer than slots_per_term courses should fail."""
+        self._print_header("Courses Overload")
+        semesters = [[Course(f"T{i}_{s}", 0.5) for i in range(4)] for s in range(4)]
+        v = ConstraintVerifier(semesters)
+        self.assertFalse(v.verify_courses_per_semester())
+
+    def test_courses_per_semester_disabled_with_zero(self):
+        """slots_per_term=0 disables the per-semester count check."""
+        self._print_header("Courses Overload")
+        semesters = [[Course(f"T{i}_{s}", 0.5) for i in range(3)] for s in range(4)]
+        v = ConstraintVerifier(semesters)
+        v.constraints["slots_per_term"] = 0
+        self.assertTrue(v.verify_courses_per_semester())
 
     # --- TOTAL CREDITS (4 tests) ---
     def test_credits_low(self):
@@ -268,6 +294,37 @@ class TestConstraintVerifierExtended(unittest.TestCase):
         v = ConstraintVerifier(sem)
         v.constraints["min_math_sci_courses"] = 1
         self.assertTrue(v.verify_math_sci_requirement())
+
+    # --- CAPSTONE PLACEMENT (3 tests) ---
+    def test_capstone_placement_pass(self):
+        """Capstone in 4F (index 2) — should pass."""
+        self._print_header("Capstone Placement")
+        courses = [
+            Course("C1", area=1, num_credits=1.0, kernel_course=True, course_type="technical"),
+            Course("ECE472H1", num_credits=0.5, is_required=True, course_type="technical"),
+            Course("ECE496Y1", num_credits=1.0, term="Y", is_required=True, course_type="technical"),
+        ]
+        semesters = [[], [], [courses[2]], [courses[2]]]
+        semesters[0].append(courses[0])
+        semesters[1].append(courses[1])
+        v = ConstraintVerifier(semesters)
+        self.assertTrue(v.verify_capstone_placement())
+
+    def test_capstone_placement_in_3f_fail(self):
+        """Capstone in 3F (index 0) — must fail."""
+        self._print_header("Capstone Placement")
+        capstone = Course("ECE496Y1", num_credits=1.0, term="Y", is_required=True, course_type="technical")
+        semesters = [[capstone], [], [], []]
+        v = ConstraintVerifier(semesters)
+        self.assertFalse(v.verify_capstone_placement())
+
+    def test_capstone_placement_in_3s_fail(self):
+        """Capstone in 3S (index 1) — must fail."""
+        self._print_header("Capstone Placement")
+        capstone = Course("ECE496Y1", num_credits=1.0, term="Y", is_required=True, course_type="technical")
+        semesters = [[], [capstone], [], []]
+        v = ConstraintVerifier(semesters)
+        self.assertFalse(v.verify_capstone_placement())
 
     # --- REPETITION & DYNAMIC (3 tests) ---
     def test_repetition_fail(self):

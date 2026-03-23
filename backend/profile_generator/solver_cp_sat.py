@@ -25,7 +25,7 @@ class GlobalCpSatProfileSolver:
     def __init__(self, courses: list[Course], policy: ConstraintPolicy):
         self.courses = courses
         self.policy = policy
-        self.pool = CoursePoolBuilder(courses)
+        self.pool = CoursePoolBuilder(courses=courses, exclude_h3_h5=policy.exclude_h3_h5)
 
     def solve(self, preferred_codes: list[str] | None = None, seed: int | None = None) -> ProfileSolveResult | None:
         if not ORTOOLS_AVAILABLE:
@@ -96,7 +96,11 @@ class GlobalCpSatProfileSolver:
 
         # Semester assignment variables for non-capstone offerings:
         # indices: 0=3F, 1=3S, 2=4F, 3=4S
-        slot_targets = {0: 5, 1: 5, 2: 4, 3: 4}
+        # slots_per_term and capstone_semester_indices are read from the SSOT
+        # via ConstraintPolicy so no magic numbers live here.
+        cap_sems = set(self.policy.capstone_semester_indices)
+        s = self.policy.slots_per_term
+        slot_targets = {t: (s - 1 if t in cap_sems else s) for t in range(4)}
         z: dict[tuple[int, int], cp_model.IntVar] = {}
         for i, c in enumerate(noncap_offerings):
             compatible_terms = [0, 2] if c.term == "F" else [1, 3]
@@ -191,8 +195,12 @@ class GlobalCpSatProfileSolver:
         )
         model.Add(sum(y[code] for code in tech_codes) >= min_consumed + self.policy.min_technical_elective_courses)
 
-        # Year-3 technical rule:
-        # technical_y3 >= 7 OR if ECE472 is in year3 then technical_y3 >= 6
+        # Year-3 technical rule (read from SSOT via policy — no hardcoded numbers):
+        # technical_y3 >= min_y3  OR  if ECE472 is in year3: technical_y3 >= min_y3_ece472
+        # Expressed as a single linear inequality: tech_y3 + ece_y3 * diff >= min_y3
+        min_y3 = self.policy.year3_min_technical_courses
+        min_y3_ece472 = self.policy.year3_min_technical_courses_if_ece472
+        diff = min_y3 - min_y3_ece472
         tech_y3 = sum(
             z[(i, t)]
             for i, c in enumerate(noncap_offerings)
@@ -203,9 +211,9 @@ class GlobalCpSatProfileSolver:
         if ece_idx:
             ece_y3 = model.NewBoolVar("ece472_in_year3")
             model.Add(ece_y3 == sum(z[(i, t)] for i in ece_idx for t in (0, 1) if (i, t) in z))
-            model.Add(tech_y3 >= 7 - ece_y3)
+            model.Add(tech_y3 + diff * ece_y3 >= min_y3)
         else:
-            model.Add(tech_y3 >= 7)
+            model.Add(tech_y3 >= min_y3)
 
         # CSC3*/CSC4* max credits
         csc_codes = [code for code in rep_by_code if code.startswith("CSC3") or code.startswith("CSC4")]
@@ -281,9 +289,9 @@ class GlobalCpSatProfileSolver:
             return None
 
         semester_plan: list[list[Course]] = [[], [], [], []]
-        # Place capstone in 4F/4S
-        semester_plan[2].append(capstone)
-        semester_plan[3].append(capstone)
+        # Place capstone in the year-4 semesters (read from SSOT via policy)
+        for sem_idx in self.policy.capstone_semester_indices:
+            semester_plan[sem_idx].append(capstone)
         for i, c in enumerate(noncap_offerings):
             if solver.Value(x[i]) != 1:
                 continue
@@ -292,7 +300,7 @@ class GlobalCpSatProfileSolver:
                     semester_plan[t].append(c)
                     break
 
-        if not (len(semester_plan[0]) == 5 and len(semester_plan[1]) == 5 and len(semester_plan[2]) == 5 and len(semester_plan[3]) == 5):
+        if not all(len(semester_plan[t]) == self.policy.slots_per_term for t in range(4)):
             return None
 
         unique = []

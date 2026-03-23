@@ -38,6 +38,7 @@ class ConstraintVerifier:
             RuleCheck("Required Course Set", "verify_required_courses"),
             RuleCheck("ECE472 Required", "verify_ece472"),
             RuleCheck("Capstone Required", "verify_capstone"),
+            RuleCheck("Capstone Placement (Year 4 Only)", "verify_capstone_placement"),
             RuleCheck("Breadth Requirement", "verify_breadth_requirement"),
             RuleCheck("Depth Requirement", "verify_depth_requirement"),
             RuleCheck("Math/Science (Area 7) Requirement", "verify_math_sci_requirement"),
@@ -121,11 +122,33 @@ class ConstraintVerifier:
         # If required -> must be exactly 1
         return count == 1
 
+    # ----------------------------------------------------------
+    # 3b. Capstone placement — must appear ONLY in 4F/4S
+    #     (semester indices 2 and 3), never in 3F/3S.
+    #     Per SSOT: "Capstone courses cannot be in 3F/3S - they must
+    #     be in 4F/4S."
+    # ----------------------------------------------------------
+    def verify_capstone_placement(self) -> bool:
+        if len(self.semester_courses) < 4:
+            # Defer to semester-count rule; cannot meaningfully enforce here.
+            return True
+        forbidden = set(range(len(self.semester_courses))) - set(
+            self._get_constraint("capstone_semester_indices", [2, 3])
+        )
+        for idx in forbidden:
+            for c in self.semester_courses[idx]:
+                if self._is_capstone_course(c):
+                    return False
+        return True
+
 
     # ----------------------------------------------------------
     # 4. Breadth / Kernel requirement
     #    "min_breadth_areas" distinct areas with at least
     #    "min_kernel_per_breadth_area" kernel courses in each area
+    #
+    #    Per SSOT: required courses (ECE472H1, capstone) must NOT count
+    #    towards breadth or depth, even if they carry an area tag.
     # ----------------------------------------------------------
     def verify_breadth_requirement(self) -> bool:
         min_breadth_areas = self._get_constraint("min_breadth_areas", 0)
@@ -133,7 +156,7 @@ class ConstraintVerifier:
         if min_breadth_areas <= 0:
             return True
 
-        area_map = self._courses_by_area()
+        area_map = self._courses_by_area(exclude_required=True)
 
         qualifying_areas = 0
         for area, clist in area_map.items():
@@ -148,6 +171,8 @@ class ConstraintVerifier:
     #    "min_depth_areas" areas must have:
     #    - "min_kernel_per_depth_area" kernel courses AND
     #    - "min_courses_per_depth_area" total courses
+    #
+    #    Per SSOT: required courses must NOT count towards depth.
     # ----------------------------------------------------------
     def verify_depth_requirement(self) -> bool:
         min_depth_areas = self._get_constraint("min_depth_areas", 0)
@@ -156,7 +181,7 @@ class ConstraintVerifier:
         if min_depth_areas <= 0:
             return True
 
-        area_map = self._courses_by_area()
+        area_map = self._courses_by_area(exclude_required=True)
 
         qualifying_depth_areas = 0
         for area, clist in area_map.items():
@@ -318,8 +343,13 @@ class ConstraintVerifier:
         return len(self.semester_courses) == 4
 
     def verify_courses_per_semester(self) -> bool:
-        # Constraint: Each semester has <= 6 courses
-        return all(len(semester) <= 6 for semester in self.semester_courses)
+        # Per SSOT (profile_shape.slots_per_term): every semester must have
+        # exactly the configured number of courses (default 5).
+        # Set slots_per_term = 0 in constraints to skip this check in tests.
+        expected = int(self._get_constraint("slots_per_term", 5))
+        if expected <= 0:
+            return True
+        return all(len(semester) == expected for semester in self.semester_courses)
 
     # ----------------------------------------------------------
     # Main verification function
@@ -366,11 +396,19 @@ class ConstraintVerifier:
     # -----------------------------------------------------
     # Helper utilities
     # -----------------------------------------------------
-    def _courses_by_area(self) -> dict[int, list]:
-        """Group courses by area, ignoring courses with no area."""
+    def _courses_by_area(self, exclude_required: bool = False) -> dict[int, list]:
+        """Group courses by area, ignoring courses with no area.
+
+        Args:
+            exclude_required: When True, skip courses with ``is_required=True``
+                (i.e. ECE472H1 and capstone codes).  Per SSOT, required courses
+                must not count towards breadth or depth requirements.
+        """
         area_map: dict[int, list] = {}
         allowed_areas = set(self._get_constraint("breadth_depth_area_domain", [1, 2, 3, 4, 5, 6, 7]))
         for c in self.courses:
+            if exclude_required and getattr(c, "is_required", False):
+                continue
             if c.area is None or c.area == -1:
                 continue
             if allowed_areas and c.area not in allowed_areas:

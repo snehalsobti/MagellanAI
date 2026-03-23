@@ -2,20 +2,51 @@
 	import { getAuthMode } from '$lib/auth';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { fetchConstraints } from '$lib/api/catalog';
+	import type { ProgramConstraints } from '$lib/api/catalog';
 
-	const programRequirements = [
-		['Kernels', '4 courses from four different areas'],
-		['Depths', '2 courses in area X, with a chosen kernel course'],
-		['Depths', '2 courses in area Y, with a chosen kernel course'],
+	let constraints: ProgramConstraints | null = null;
+
+	// Fallback display values matching the SSOT defaults — shown until the
+	// API responds.  These must stay in sync with constraints.json if the
+	// backend is unavailable; treat them as read-only compile-time constants.
+	const FALLBACK: ProgramConstraints = {
+		total_num_credits: 10.0, slots_per_term: 5,
+		capstone_codes: ['ECE496Y1', 'APS490Y1', 'BME498Y1'],
+		min_breadth_areas: 4, min_depth_areas: 2, min_courses_per_depth_area: 3,
+		min_math_sci_courses: 1, min_technical_elective_courses: 3,
+		min_complementary_courses: 4, min_hss_in_complementary: 2,
+		min_free_elective_courses: 1, max_csc34_credits: 1.5,
+		year3_min_technical_courses: 7, year3_min_technical_courses_if_ece472: 6,
+		year12_default_choice: 'ECE297H1',
+		ceab_total_au: 1870.0, ceab_cs: 240.0, ceab_math: 214.5, ceab_ns: 200.0,
+		ceab_math_ns: 462.0, ceab_es: 247.5, ceab_ed: 247.5, ceab_es_ed: 990.0,
+	};
+
+	$: c = constraints ?? FALLBACK;
+
+	$: programRequirements = [
+		['Kernels', `${c.min_breadth_areas} courses from four different areas`],
+		['Depths', `${c.min_depth_areas} courses in area X, with a chosen kernel course`],
+		['Depths', `${c.min_depth_areas} courses in area Y, with a chosen kernel course`],
 		['Engineering Economics', '1 (ECE472)'],
 		['Capstone', 'Full year design project'],
-		['Science/Math', '1 course chosen from the Science/Math area'],
-		['Technical Electives', '3 ECE technical areas'],
-		['Free Elective', '1'],
-		['Complementary Studies', '4: 2 must be HSS courses']
+		['Science/Math', `${c.min_math_sci_courses} course chosen from the Science/Math area`],
+		['Technical Electives', `${c.min_technical_elective_courses} ECE technical areas`],
+		['Free Elective', `${c.min_free_elective_courses}`],
+		['Complementary Studies', `${c.min_complementary_courses}: ${c.min_hss_in_complementary} must be HSS courses`],
 	];
 
-	const ceabRows = [['1870', '240', '214.5', '200', '462', '247.5', '247.5', '990']];
+	$: ceabRows = [[
+		String(c.ceab_total_au),
+		String(c.ceab_cs),
+		String(c.ceab_math),
+		String(c.ceab_ns),
+		String(c.ceab_math_ns),
+		String(c.ceab_es),
+		String(c.ceab_ed),
+		String(c.ceab_es_ed),
+	]];
 
 	const designationRows = [
 		['E', 'E', 'E', 'E', 'E', 'E', 'EE'],
@@ -23,11 +54,12 @@
 		['E', 'E', 'E', 'C', 'E', 'C', 'EE'],
 		['E', 'E', 'C', 'C', 'E', 'E', 'EE'],
 		['E', 'E', 'C', 'C', 'E', 'C', 'CE'],
-		['E', 'E', 'C', 'C', 'C', 'C', 'CE']
+		['E', 'E', 'C', 'C', 'C', 'C', 'CE'],
 	];
 
-	onMount(() => {
-		if (!getAuthMode()) goto('/signin');
+	onMount(async () => {
+		if (!getAuthMode()) { goto('/signin'); return; }
+		constraints = await fetchConstraints();
 	});
 </script>
 

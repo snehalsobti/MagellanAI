@@ -16,6 +16,11 @@ def normalize_constraints(raw: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize the structured constraints.json schema into the flat dict
     consumed by verifier and policy components.
+
+    The constraints.json file is the Single Source of Truth (SSOT) for all
+    ECE program invariants.  Any value that governs profile generation,
+    constraint verification, or UI display must be sourced from there via
+    this normalizer — never hardcoded elsewhere.
     """
     if not isinstance(raw.get("hard_requirements"), dict):
         raise ValueError("Invalid constraints schema: missing 'hard_requirements' object")
@@ -25,13 +30,33 @@ def normalize_constraints(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Invalid constraints schema: missing 'profile_shape' object")
 
     out: dict[str, Any] = {}
+
+    # ── Profile shape ──────────────────────────────────────────────────────
+    out["slots_per_term"] = int(_get(raw, ["profile_shape", "slots_per_term"], 5))
+    out["capstone_semester_indices"] = list(
+        _get(raw, ["profile_shape", "capstone_semester_indices"], [2, 3])
+    )
+    out["allow_non_capstone_y"] = bool(_get(raw, ["profile_shape", "allow_non_capstone_y"], False))
+
+    # ── Capstone ────────────────────────────────────────────────────────────
+    out["capstone_codes"] = list(
+        _get(raw, ["capstone", "codes"], ["ECE496Y1", "APS490Y1", "BME498Y1"])
+    )
+    out["capstone_must_be_year4"] = bool(_get(raw, ["capstone", "must_be_in_year4"], True))
+
+    # ── Assumptions ─────────────────────────────────────────────────────────
+    out["include_year12_ceab_baseline"] = bool(
+        _get(raw, ["assumptions", "include_year12_ceab_baseline"], True)
+    )
+    out["year12_default_choice"] = str(_get(raw, ["assumptions", "year12_default_choice"], "ECE297H1"))
+
+    # ── Hard requirements ───────────────────────────────────────────────────
     out["total_num_credits"] = float(_get(raw, ["hard_requirements", "total_num_credits"], 10.0))
     out["ece472_required"] = bool(_get(raw, ["hard_requirements", "ece472_required"], True))
     out["capstone_required"] = bool(_get(raw, ["hard_requirements", "capstone_required"], True))
     out["min_required_non_capstone_courses"] = int(
         _get(raw, ["hard_requirements", "min_required_non_capstone_courses"], 1)
     )
-    out["allow_non_capstone_y"] = bool(_get(raw, ["profile_shape", "allow_non_capstone_y"], False))
 
     out["min_breadth_areas"] = int(_get(raw, ["hard_requirements", "breadth", "min_breadth_areas"], 4))
     out["min_kernel_per_breadth_area"] = int(
@@ -49,7 +74,9 @@ def normalize_constraints(raw: dict[str, Any]) -> dict[str, Any]:
         _get(raw, ["hard_requirements", "depth", "min_courses_per_depth_area"], 3)
     )
 
-    out["min_math_sci_courses"] = int(_get(raw, ["hard_requirements", "math_sci", "min_math_sci_courses"], 1))
+    out["min_math_sci_courses"] = int(
+        _get(raw, ["hard_requirements", "math_sci", "min_math_sci_courses"], 1)
+    )
     out["exclude_h3_h5"] = bool(_get(raw, ["hard_requirements", "exclude_h3_h5"], True))
     out["max_csc34_credits"] = float(_get(raw, ["hard_requirements", "max_csc34_credits"], 1.5))
 
@@ -72,9 +99,7 @@ def normalize_constraints(raw: dict[str, Any]) -> dict[str, Any]:
         _get(raw, ["hard_requirements", "year3_technical", "min_technical_courses_if_ece472"], 6)
     )
 
-    out["include_year12_ceab_baseline"] = bool(_get(raw, ["assumptions", "include_year12_ceab_baseline"], True))
-    out["year12_default_choice"] = str(_get(raw, ["assumptions", "year12_default_choice"], "ECE297H1"))
-
+    # ── CEAB requirements ───────────────────────────────────────────────────
     out["ceab_attributes_required"] = bool(_get(raw, ["ceab_requirements", "enabled"], True))
 
     targets = _get(raw, ["ceab_requirements", "targets"], {})
@@ -97,4 +122,3 @@ def normalize_constraints(raw: dict[str, Any]) -> dict[str, Any]:
     out["preobtained_es_ed"] = float(pre.get("es_ed", 0.0))
     out["preobtained_cs"] = float(pre.get("cs", 0.0))
     return out
-

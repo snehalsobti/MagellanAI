@@ -2,6 +2,7 @@
 # FastAPI server that connects frontend to backend pipeline
 
 from collections import defaultdict, deque
+import json
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -19,6 +20,7 @@ from backend.data_bridge.factory import get_catalog_bridge
 from backend.profile_generator.profile_generator import ProfileGenerator
 from backend.profile_generator.profile_course_loader import ProfileCourseLoader
 from backend.constraint_verifier.constraint_verifier import ConstraintVerifier
+from backend.constraint_verifier.constraint_schema import normalize_constraints
 from backend.course_query_system.basic_query import load_course_details_index
 
 app = FastAPI(title="MagellanAI API")
@@ -118,6 +120,33 @@ class ProfileResponse(BaseModel):
     error: str = None
 
 
+class ConstraintsDisplayResponse(BaseModel):
+    """ECE program constraint values served from the SSOT for frontend display."""
+    total_num_credits: float
+    slots_per_term: int
+    capstone_codes: list[str]
+    min_breadth_areas: int
+    min_depth_areas: int
+    min_courses_per_depth_area: int
+    min_math_sci_courses: int
+    min_technical_elective_courses: int
+    min_complementary_courses: int
+    min_hss_in_complementary: int
+    min_free_elective_courses: int
+    max_csc34_credits: float
+    year3_min_technical_courses: int
+    year3_min_technical_courses_if_ece472: int
+    year12_default_choice: str
+    ceab_total_au: float
+    ceab_cs: float
+    ceab_math: float
+    ceab_ns: float
+    ceab_math_ns: float
+    ceab_es: float
+    ceab_ed: float
+    ceab_es_ed: float
+
+
 class InMemoryRateLimiter:
     def __init__(self, *, max_requests: int, window_seconds: int):
         self.max_requests = max_requests
@@ -192,6 +221,43 @@ async def health_check():
         "data_loaded": profile_generator is not None,
         "num_profile_courses": len(profile_courses) if profile_courses else 0
     }
+
+
+@app.get("/constraints", response_model=ConstraintsDisplayResponse)
+async def get_constraints():
+    """
+    Serve the ECE program constraint display values from the SSOT
+    (backend/constraint_verifier/constraints.json).
+    Frontend pages use this to avoid hardcoding any program numbers.
+    """
+    _constraints_path = Path(__file__).resolve().parent / "backend" / "constraint_verifier" / "constraints.json"
+    with open(_constraints_path, "r", encoding="utf-8") as _f:
+        _raw = normalize_constraints(json.load(_f))
+    return ConstraintsDisplayResponse(
+        total_num_credits=_raw["total_num_credits"],
+        slots_per_term=_raw["slots_per_term"],
+        capstone_codes=_raw["capstone_codes"],
+        min_breadth_areas=_raw["min_breadth_areas"],
+        min_depth_areas=_raw["min_depth_areas"],
+        min_courses_per_depth_area=_raw["min_courses_per_depth_area"],
+        min_math_sci_courses=_raw["min_math_sci_courses"],
+        min_technical_elective_courses=_raw["min_technical_elective_courses"],
+        min_complementary_courses=_raw["min_complementary_courses"],
+        min_hss_in_complementary=_raw["min_hss_in_complementary"],
+        min_free_elective_courses=_raw["min_free_elective_courses"],
+        max_csc34_credits=_raw["max_csc34_credits"],
+        year3_min_technical_courses=_raw["year3_min_technical_courses"],
+        year3_min_technical_courses_if_ece472=_raw["year3_min_technical_courses_if_ece472"],
+        year12_default_choice=_raw["year12_default_choice"],
+        ceab_total_au=_raw["ceab_total_au"],
+        ceab_cs=_raw["ceab_cs"],
+        ceab_math=_raw["ceab_math"],
+        ceab_ns=_raw["ceab_ns"],
+        ceab_math_ns=_raw["ceab_math_ns"],
+        ceab_es=_raw["ceab_es"],
+        ceab_ed=_raw["ceab_ed"],
+        ceab_es_ed=_raw["ceab_es_ed"],
+    )
 
 
 @app.post("/generate-profile", response_model=ProfileResponse)

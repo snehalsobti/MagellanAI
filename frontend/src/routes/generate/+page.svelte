@@ -14,7 +14,7 @@
 	let profile: ProfileResponse | null = null;
 	let error: string | null = null;
 	let selectedCourse: CourseInfo | null = null;
-	let year12Choice: 'ECE295H1' | 'ECE297H1' = 'ECE295H1';
+	let year12Choice: 'ECE295H1' | 'ECE297H1' = 'ECE297H1';
 	let year12Courses: string[] = [];
 	let loadingTimer: ReturnType<typeof setInterval> | null = null;
 let elapsedSeconds = 0;

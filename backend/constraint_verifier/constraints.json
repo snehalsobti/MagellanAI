@@ -1,48 +1,92 @@
 {
+  "_metadata": {
+    "program": "ECE Engineering Science (Electrical & Computer Engineering), University of Toronto",
+    "academic_year": "2025-26",
+    "scope": "Year 3 and Year 4 only — 20 semester slots across 4 semesters (3F, 3S, 4F, 4S)",
+    "total_semester_slots": 20,
+    "total_unique_course_codes": 19,
+    "credit_breakdown": "18 half-credit (H) courses x 0.5 credits + 1 full-year (Y) capstone x 1.0 credit = 10.0 total credits. The capstone occupies 2 semester slots (4F + 4S) but its CEAB attributes are counted only once.",
+    "ssot_note": "This file is the Single Source of Truth (SSOT) for ALL ECE program invariants. Every numeric threshold, boolean flag, and enumerated list that governs constraint checking, profile generation, or UI display lives here. Never hardcode these values in Python, TypeScript, or any other module. When a program rule changes, update this file first — all other modules consume it automatically.",
+    "no_overlap_rule": "Each course code satisfies exactly one requirement category. ECE472H1 and all capstone codes are reserved exclusively for the Required category and must not count towards breadth, depth, math/sci, technical elective, complementary, or free elective requirements. No course code may appear in multiple requirement buckets.",
+    "requirement_count_derivation": "4 breadth kernels + 4 depth extras (2 areas x 2 extra) + 2 required (ECE472 + capstone code) + 1 math/sci (area 7) + 3 technical electives + 4 complementary studies + 1 free elective = 19 unique course codes"
+  },
+
   "profile_shape": {
     "terms": ["3F", "3S", "4F", "4S"],
     "slots_per_term": 5,
-    "allow_non_capstone_y": false
+    "capstone_semester_indices": [2, 3],
+    "allow_non_capstone_y": false,
+    "_note": "capstone_semester_indices are 0-based indices into the terms array. Index 2 = 4F, index 3 = 4S. Non-capstone Y-term courses are prohibited."
   },
+
+  "capstone": {
+    "codes": ["ECE496Y1", "APS490Y1", "BME498Y1"],
+    "exactly_one_required": true,
+    "must_be_in_year4": true,
+    "year4_semester_indices": [2, 3],
+    "_note": "Exactly one capstone must appear. It is a full-year (Y-term) course that spans 4F and 4S, counting as 1.0 credit. It cannot be placed in 3F (index 0) or 3S (index 1)."
+  },
+
   "assumptions": {
     "include_year12_ceab_baseline": true,
-    "year12_default_choice": "ECE297H1"
+    "year12_default_choice": "ECE297H1",
+    "year12_choice_options": ["ECE295H1", "ECE297H1"],
+    "_note": "Students take exactly one of ECE295H1 or ECE297H1 in Year 2. Year 1/2 CEAB attribute totals form the pre-obtained baseline; Year 3/4 courses must collectively reach the CEAB targets minus this baseline."
   },
+
   "hard_requirements": {
     "total_num_credits": 10.0,
     "ece472_required": true,
     "capstone_required": true,
     "min_required_non_capstone_courses": 1,
+
     "breadth": {
       "min_breadth_areas": 4,
       "min_kernel_per_breadth_area": 1,
-      "breadth_depth_area_domain": [1, 2, 3, 4, 5, 6]
+      "breadth_depth_area_domain": [1, 2, 3, 4, 5, 6],
+      "_note": "Choose 4 distinct technical areas from 1–6. Each chosen area must include at least 1 kernel course. Required courses (ECE472H1, capstone codes) must NOT be counted towards breadth or depth even if they carry an area tag."
     },
+
     "depth": {
       "min_depth_areas": 2,
       "min_kernel_per_depth_area": 1,
-      "min_courses_per_depth_area": 3
+      "min_courses_per_depth_area": 3,
+      "_note": "From the 4 breadth areas, choose 2 and add 2 extra courses in each (kernel or non-kernel). Each depth area must have: 1 breadth kernel + 2 depth extras = 3 total courses from that area. Combined breadth+depth = 4 + 4 = 8 distinct course codes."
     },
+
     "math_sci": {
-      "min_math_sci_courses": 1
+      "min_math_sci_courses": 1,
+      "area": 7,
+      "_note": "At least 1 course from Area 7 (Math/Science electives). Area 7 courses are entirely independent of breadth/depth and cannot be double-counted with those categories."
     },
-    "exclude_h3_h5": true,
-    "max_csc34_credits": 1.5,
+
+    "technical_electives": {
+      "min_technical_elective_courses": 3,
+      "_note": "3 additional technical courses from areas 1-7, distinct from breadth, depth, math/sci, and required course assignments."
+    },
+
     "complementary": {
       "min_complementary_courses": 4,
-      "min_hss_in_complementary": 2
+      "min_hss_in_complementary": 2,
+      "_note": "4 complementary studies courses. At least 2 must be HSS (Humanities & Social Sciences). Remaining slots may be CS (Complementary Studies electives, non-HSS)."
     },
+
     "free_elective": {
-      "min_free_elective_courses": 1
+      "min_free_elective_courses": 1,
+      "_note": "1 free elective from any course in the database that is not a Year 1/2 course and not a required course."
     },
-    "technical_electives": {
-      "min_technical_elective_courses": 3
-    },
+
     "year3_technical": {
       "min_technical_courses": 7,
-      "min_technical_courses_if_ece472": 6
-    }
+      "min_technical_courses_if_ece472": 6,
+      "_note": "The combined 3F + 3S semesters must include at least 7 technical courses. If ECE472H1 is scheduled in Year 3, the minimum drops to 6."
+    },
+
+    "exclude_h3_h5": true,
+    "max_csc34_credits": 1.5,
+    "no_repetition": true
   },
+
   "ceab_requirements": {
     "enabled": true,
     "targets": {
@@ -64,6 +108,7 @@
       "ed": 0.0,
       "es_ed": 0.0,
       "cs": 0.0
-    }
+    },
+    "_note": "preobtained values represent CEAB AUs already secured before Year 3/4 (i.e. externally credited). The effective requirement is max(0, target - preobtained). Year 1/2 course CEAB contributions are loaded via the assumptions.include_year12_ceab_baseline flag, not via preobtained."
   }
 }

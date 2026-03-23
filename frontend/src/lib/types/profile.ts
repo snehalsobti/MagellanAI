@@ -69,3 +69,33 @@ export interface GenerateProfilePayload {
 	num_recommendations: number;
 	year12_choice?: string | null;
 }
+
+export interface FeedbackPayload {
+	locked: string[];
+	excluded: string[];
+	liked: string[];
+	disliked: string[];
+}
+
+export interface RegenerateProfilePayload {
+	interests?: string;
+	num_recommendations?: number;
+	year12_choice?: string | null;
+	/** Original ranked preference list from the first /generate-profile call. */
+	preferences: string[];
+	feedback: FeedbackPayload;
+}
+
+export interface FeedbackHonorReport {
+	liked_honored: string[];
+	liked_skipped: string[];
+	disliked_honored: string[];
+	disliked_forced: string[];
+}
+
+/** Response from POST /regenerate-profile. Same shape as ProfileResponse but with extras. */
+export interface RegenerateProfileResponse extends ProfileResponse {
+	feedback_result?: FeedbackHonorReport | null;
+	timed_out?: boolean;
+	feedback_infeasible?: boolean;
+}

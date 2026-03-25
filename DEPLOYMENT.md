@@ -126,41 +126,58 @@ CREATE POLICY "users_delete_own" ON generation_history
 
 ## Step 5 — Deploy the backend to Render
 
+> **Note:** Render may not auto-detect `render.yaml`. Configure the service manually
+> as described below — it takes 2 minutes and is the most reliable approach.
+
 1. Go to [https://render.com](https://render.com) and sign in / create an account.
 2. Click **New → Web Service**.
 3. Connect your GitHub account and select the **MagellanAI** repository.
-4. Render will detect `render.yaml` automatically. Confirm:
+4. If Render shows a blueprint/render.yaml option, skip it. Instead, choose
+   **"Configure manually"** and fill in:
    - **Name**: `magellanai-backend`
    - **Branch**: `main`
-   - **Runtime**: Python
-   - **Build Command**: (from render.yaml)
+   - **Runtime**: **Python 3**
+   - **Root Directory**: *(leave blank — the repo root is correct)*
+   - **Build Command**:
+     ```
+     pip install --upgrade pip setuptools wheel && pip install -r requirements.txt && pip install -r requirements_api.txt
+     ```
    - **Start Command**: `python api_server.py`
-5. Click **Create Web Service**.
-6. While the first deploy runs, go to **Environment** in the Render dashboard and add:
+   - **Instance Type**: **Free** (or Starter $7/mo to avoid cold starts)
+5. Under **Advanced → Disk**, add a persistent disk:
+   - **Name**: `magellan-data`
+   - **Mount Path**: `/opt/render/project/src/data`
+   - **Size**: 1 GB
+6. Under **Environment Variables**, add **all of these before clicking Deploy**:
 
    | Key | Value |
    |-----|-------|
    | `OPENAI_API_KEY` | your OpenAI key (starts with `sk-`) |
    | `RAG_OPENAI_MODEL` | `gpt-4.1` |
-   | `MAGELLAN_ALLOWED_ORIGINS` | *(leave blank for now; you will fill this in after Step 6)* |
+   | `PYTHON_VERSION` | `3.11.10` |
+   | `MAGELLAN_ALLOWED_ORIGINS` | *(leave blank for now; fill in after Step 6)* |
 
-7. Wait for the deploy to succeed (5–10 minutes for first build; sentence-transformers
-   and OR-Tools are large).
-8. Copy the **public URL** Render shows (e.g. `https://magellanai-backend.onrender.com`).
+7. Click **Create Web Service**.
+8. Wait for the deploy to succeed. The **first build takes 5–10 minutes** (downloading
+   OR-Tools, PyTorch, and sentence-transformers). Subsequent deploys are faster because
+   Render caches the pip dependencies.
+   > If the deploy shows "No open ports detected" — push the latest code first (the
+   > `runtime.txt` and lazy-import fixes from this repo), then trigger a manual redeploy.
+9. Copy the **public URL** Render shows (e.g. `https://magellanai-backend.onrender.com`).
    You will need this in Step 6.
 
-> **Important — Persistent disk for SQLite**: `render.yaml` already configures a 1 GB
-> persistent disk mounted at `/opt/render/project/src/data`. This means `data/magellan.db`
-> survives redeploys. However, on **first deploy** the disk is empty. Render will run the
-> build command which does NOT auto-initialise the DB. To initialise:
-> 1. In Render dashboard, open the **Shell** tab for your service.
-> 2. Run:
+> **Important — initialise the SQLite database on first deploy.**
+> The persistent disk starts empty. After the first successful deploy:
+> 1. In the Render dashboard, open your service → **Shell** tab.
+> 2. Run these three commands (they take 2–5 minutes):
 >    ```bash
 >    python3 -m backend.data_pipeline.cli init-db
 >    python3 -m backend.data_pipeline.cli migrate-from-folders --data-dir data
 >    python3 -m backend.data_pipeline.cli scrape-missing-descriptions
 >    ```
-> 3. Subsequent redeploys will reuse the same disk and db.
+> 3. Trigger a **Manual Deploy** from the Render dashboard so the server restarts
+>    and picks up the newly populated database.
+> 4. Subsequent deploys reuse the same disk — you never need to re-run these.
 
 ---
 

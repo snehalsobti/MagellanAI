@@ -7,8 +7,6 @@ import re
 import hashlib
 import numpy as np
 import pandas as pd
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 import openai
 from dotenv import load_dotenv
 from backend.data_bridge.interfaces import CatalogBridge
@@ -34,12 +32,16 @@ _EMBEDDING_SCHEMA_VERSION = "v2"
 OPENAI_MODEL = os.getenv("RAG_OPENAI_MODEL", "gpt-4")
 OPENAI_TIMEOUT = 30  # seconds
 
-# Initialize model (lazy load)
+# Lazy-loaded sentence-transformer model.
+# The import of SentenceTransformer (which pulls in PyTorch — ~500 MB) is deferred
+# until the first call to get_model(). This keeps server startup fast even on
+# memory-constrained hosts like Render's free tier.
 _model = None
 
 def get_model():
     global _model
     if _model is None:
+        from sentence_transformers import SentenceTransformer  # noqa: PLC0415
         _model = SentenceTransformer(MODEL_NAME)
     return _model
 

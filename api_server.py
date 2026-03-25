@@ -690,10 +690,13 @@ async def regenerate_profile(request: Request, payload: RegenerateProfileRequest
 
 if __name__ == "__main__":
     import uvicorn
+    # Render (and other cloud hosts) inject a PORT env var. Locally we default to 8000.
+    port = int(os.getenv("PORT", 8000))
     print("\n" + "="*60)
     print("Starting MagellanAI API Server")
+    print(f"Binding to 0.0.0.0:{port}")
     print("="*60)
     print("Make sure OPENAI_API_KEY is set in your environment!")
     print("="*60 + "\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
 

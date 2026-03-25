@@ -492,24 +492,40 @@ async def search_courses(
             or needle in (r.description or "").lower()
         ]
 
+    # Cache get_course_offering by (course_code, term) to avoid redundant DB
+    # calls for multi-area courses that share the same offering row.
+    # IMPORTANT: we use `row` (from filter_courses) for classification fields
+    # like area/kernel_course/technical_elective because filter_courses returns
+    # one row per (course_code, term, area) — so multi-area courses correctly
+    # appear multiple times with different areas.  get_course_offering() uses
+    # LIMIT 1 and would always return the lowest area, silently collapsing all
+    # area variants into a single area value.
+    offering_cache: dict[tuple[str, str], object] = {}
     courses = []
     for row in rows:
-        offering = catalog_bridge.get_course_offering(row.course_code, row.term)
+        key = (row.course_code, row.term)
+        if key not in offering_cache:
+            offering_cache[key] = catalog_bridge.get_course_offering(row.course_code, row.term)
+        offering = offering_cache[key]
         if offering is None:
             continue
         courses.append(
             CourseInfo(
-                course_code=offering.course_code,
+                course_code=row.course_code,
                 course_name=offering.name or "Name not available",
                 course_description=offering.description,
-                area=offering.area if offering.area is not None else -1,
-                term=offering.term,
-                num_credits=0.5 if offering.term in ("F", "S") else 1.0,
-                kernel_course=bool(offering.kernel_course),
-                technical_elective=bool(offering.technical_elective),
-                free_elective=bool(offering.free_elective),
-                course_type=offering.course_type,
-                non_technical_type=offering.non_technical_type,
+                # Use the per-classification area from filter_courses, not
+                # offering.area which only reflects the single lowest area.
+                area=row.area if row.area is not None else -1,
+                term=row.term,
+                num_credits=0.5 if row.term in ("F", "S") else 1.0,
+                # Use per-classification flags (may differ between area rows).
+                kernel_course=bool(row.kernel_course),
+                technical_elective=bool(row.technical_elective),
+                free_elective=bool(row.free_elective),
+                course_type=row.course_type,
+                non_technical_type=row.non_technical_type,
+                # CEAB is course-level; come from the cached offering.
                 ceab_math=float(offering.math or 0.0),
                 ceab_ns=float(offering.ns or 0.0),
                 ceab_cs=float(offering.cs or 0.0),

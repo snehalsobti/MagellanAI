@@ -6,10 +6,8 @@
 	import type { ProgramConstraints } from '$lib/api/catalog';
 
 	let constraints: ProgramConstraints | null = null;
+	let loadError = false;
 
-	// Fallback display values matching the SSOT defaults — shown until the
-	// API responds.  These must stay in sync with constraints.json if the
-	// backend is unavailable; treat them as read-only compile-time constants.
 	const FALLBACK: ProgramConstraints = {
 		total_num_credits: 10.0, slots_per_term: 5,
 		capstone_codes: ['ECE496Y1', 'APS490Y1', 'BME498Y1'],
@@ -26,27 +24,23 @@
 	$: c = constraints ?? FALLBACK;
 
 	$: programRequirements = [
-		['Kernels', `${c.min_breadth_areas} courses from four different areas`],
-		['Depths', `${c.min_depth_areas} courses in area X, with a chosen kernel course`],
-		['Depths', `${c.min_depth_areas} courses in area Y, with a chosen kernel course`],
-		['Engineering Economics', '1 (ECE472)'],
-		['Capstone', 'Full year design project'],
-		['Science/Math', `${c.min_math_sci_courses} course chosen from the Science/Math area`],
-		['Technical Electives', `${c.min_technical_elective_courses} ECE technical areas`],
-		['Free Elective', `${c.min_free_elective_courses}`],
-		['Complementary Studies', `${c.min_complementary_courses}: ${c.min_hss_in_complementary} must be HSS courses`],
+		{ label: 'Breadth (Kernels)',        value: `${c.min_breadth_areas} courses from four different technical areas` },
+		{ label: 'Depth — Area X',           value: `${c.min_courses_per_depth_area} courses in a chosen area, including a kernel course` },
+		{ label: 'Depth — Area Y',           value: `${c.min_courses_per_depth_area} courses in a second chosen area, including a kernel course` },
+		{ label: 'Engineering Economics',    value: '1 required course (ECE472H1)' },
+		{ label: 'Capstone Design Project',  value: `Full-year design project (${c.capstone_codes.join(', ')})` },
+		{ label: 'Science / Mathematics',    value: `${c.min_math_sci_courses} course from the Science/Math area (Area 7)` },
+		{ label: 'Technical Electives',      value: `${c.min_technical_elective_courses} courses from ECE technical areas` },
+		{ label: 'Free Elective',            value: `${c.min_free_elective_courses} elective course` },
+		{ label: 'Complementary Studies',    value: `${c.min_complementary_courses} total; at least ${c.min_hss_in_complementary} must be Humanities / Social Sciences` },
 	];
 
-	$: ceabRows = [[
-		String(c.ceab_total_au),
-		String(c.ceab_cs),
-		String(c.ceab_math),
-		String(c.ceab_ns),
-		String(c.ceab_math_ns),
-		String(c.ceab_es),
-		String(c.ceab_ed),
-		String(c.ceab_es_ed),
-	]];
+	$: ceabHeaders = ['Total AU', 'CS', 'MAT', 'NS', 'NSM', 'ENS', 'DES', 'ESD'];
+	$: ceabValues  = [
+		String(c.ceab_total_au), String(c.ceab_cs), String(c.ceab_math),
+		String(c.ceab_ns), String(c.ceab_math_ns), String(c.ceab_es),
+		String(c.ceab_ed), String(c.ceab_es_ed),
+	];
 
 	const designationRows = [
 		['E', 'E', 'E', 'E', 'E', 'E', 'EE'],
@@ -59,97 +53,395 @@
 
 	onMount(async () => {
 		if (!getAuthMode()) { goto('/signin'); return; }
-		constraints = await fetchConstraints();
+		const result = await fetchConstraints();
+		if (result) {
+			constraints = result;
+		} else {
+			loadError = true;
+		}
 	});
 </script>
 
+<svelte:head>
+	<title>Program Charts — MagellanAI</title>
+</svelte:head>
+
 <main class="page">
-	<h2>ECE program requirements</h2>
-	<div class="table-wrap">
-		<table>
-			<tbody>
-				{#each programRequirements as row}
-					<tr><th>{row[0]}</th><td>{row[1]}</td></tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+	<!-- Page header -->
+	<header class="page-header">
+		<div>
+			<div class="page-breadcrumb">Navigation Hub / Program Charts</div>
+			<h1 class="page-title">Requirements & Regulations</h1>
+			<p class="page-subtitle">ECE Program Requirements & Accreditation Standards · Program Charts</p>
+		</div>
+	</header>
 
-	<ul class="notes">
-		<li>You must select ECE472. We will let you decide when you want to take this course.</li>
-		<li>You have a choice between ECE496Y or APS490Y.</li>
-		<li>
-			You may select up to one technical elective from another department. However, if you select a
-			course from another department you must seek approval from the ECE Undergraduate Office.
-		</li>
-		<li>
-			Students not enrolled in the Computer Science Major or Specialist program at A&S, UTM, or UTSC, or the Data Science Specialist at A&S,
-			are limited to a maximum of 1.5 credits in 300-/400-level CSC courses.
-		</li>
-		<li>
-			For more details on approved HSS and CS courses, refer to
-			<a href="https://undergrad.engineering.utoronto.ca/academics-registration/electives/humanities-social-science-hss-electives/">
-				Approved HSS Course List
-			</a>
-			and
-			<a href="https://undergrad.engineering.utoronto.ca/academics-registration/electives/complementary-studies-cs-electives/">
-				Approved CS Course List
-			</a>
-		</li>
-		<li>
-			All pre-requisite/co-requisite requirements must be satisfied for your selection - this is not yet handled by MagellanAI
-		</li>
-	</ul>
+	{#if loadError}
+		<div class="notice notice-warn">
+			⚠ Could not fetch live constraints from the backend — displaying default values.
+		</div>
+	{/if}
 
-	<h2>CEAB minimal course content component requirements</h2>
-	<p>
-		Canadian Engineering Accreditation Board (CEAB) provides engineers with the academic requirements
-		necessary for registration as a professional engineer in Canada. To satisfy CEAB requirements, student
-		must accumulate a minimum number of academic units (AU) in 7 categories: complementary studies (CS),
-		mathematics (MAT), natural science (NAS), combined natural science and mathematics (NSM), engineering
-		science (ENS), engineering design (DES), combined engineering science and design (ESD).
-	</p>
-	<div class="table-wrap">
-		<table>
-			<thead>
-				<tr><th>AU</th><th>CS</th><th>MAT</th><th>NS</th><th>NSM</th><th>ENS</th><th>DES</th><th>ESD</th></tr>
-			</thead>
-			<tbody>
-				{#each ceabRows as row}
-					<tr>{#each row as col}<td>{col}</td>{/each}</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+	<!-- Program Requirements -->
+	<section class="section-card">
+		<div class="section-header">
+			<h2 class="section-title">
+				<span class="section-icon" aria-hidden="true">📋</span>
+				Program Requirements
+			</h2>
+			<p class="section-desc">Every generated profile must satisfy all of the following rules.</p>
+		</div>
+		<div class="table-wrap">
+			<table class="data-table">
+				<thead>
+					<tr>
+						<th>Requirement</th>
+						<th>Specification</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each programRequirements as req}
+						<tr>
+							<th class="row-label">{req.label}</th>
+							<td>{req.value}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	</section>
 
-	<h2>CE/EE Designation</h2>
-	<p>
-		Let E denote Areas 1-4 and let C denote Areas 5-6. The following table lists all six possible
-		combinations. A profile may satisfy both EE and CE requirements.
-	</p>
-	<div class="table-wrap">
-		<table>
-			<thead>
-				<tr>
-					<th>Kernel</th><th>Kernel</th><th>Kernel</th><th>Kernel</th><th>Depth</th><th>Depth</th><th>Degree Designation</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each designationRows as row}
-					<tr>{#each row as col}<td>{col}</td>{/each}</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+	<!-- Notes -->
+	<section class="section-card notes-section">
+		<h2 class="section-title">
+			<span class="section-icon" aria-hidden="true">⚓</span>
+			Navigator's Notes
+		</h2>
+		<ul class="notes-list">
+			<li>You must select <code>ECE472H1</code> (Engineering Economics). You may choose which semester to take it.</li>
+			<li>You have a choice between <code>ECE496Y1</code> or <code>APS490Y1</code> for your capstone.</li>
+			<li>
+				You may select up to one technical elective from another department, subject to approval from the ECE Undergraduate Office.
+			</li>
+			<li>
+				Students not enrolled in the CS Major, Specialist, or Data Science Specialist at A&S, UTM, or UTSC
+				are limited to a maximum of <strong>{c.max_csc34_credits} credits</strong> in 300/400-level CSC courses.
+			</li>
+			<li>
+				For approved elective lists, see the
+				<a href="https://undergrad.engineering.utoronto.ca/academics-registration/electives/humanities-social-science-hss-electives/" target="_blank" rel="noopener">
+					HSS Elective List
+				</a>
+				and
+				<a href="https://undergrad.engineering.utoronto.ca/academics-registration/electives/complementary-studies-cs-electives/" target="_blank" rel="noopener">
+					CS Elective List
+				</a>.
+			</li>
+			<li>All prerequisite/co-requisite requirements must be satisfied — MagellanAI does not yet validate these.</li>
+		</ul>
+	</section>
+
+	<!-- CEAB Requirements -->
+	<section class="section-card">
+		<div class="section-header">
+			<h2 class="section-title">
+				<span class="section-icon" aria-hidden="true">🌐</span>
+				CEAB Academic Unit Requirements
+			</h2>
+			<p class="section-desc">
+				The Canadian Engineering Accreditation Board (CEAB) requires a minimum number of Academic Units (AU)
+				across seven categories. These ensure your degree qualifies for professional engineering registration in Canada.
+			</p>
+		</div>
+		<div class="table-wrap">
+			<table class="data-table ceab-table">
+				<thead>
+					<tr>
+						{#each ceabHeaders as h}
+							<th>{h}</th>
+						{/each}
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						{#each ceabValues as v}
+							<td>{v}</td>
+						{/each}
+					</tr>
+				</tbody>
+			</table>
+		</div>
+		<div class="ceab-legend">
+			<span><strong>CS</strong> = Complementary Studies</span>
+			<span><strong>MAT</strong> = Mathematics</span>
+			<span><strong>NS</strong> = Natural Science</span>
+			<span><strong>NSM</strong> = Math + Natural Science</span>
+			<span><strong>ENS</strong> = Engineering Science</span>
+			<span><strong>DES</strong> = Engineering Design</span>
+			<span><strong>ESD</strong> = Engineering Science + Design</span>
+		</div>
+	</section>
+
+	<!-- CE/EE Designation -->
+	<section class="section-card">
+		<div class="section-header">
+			<h2 class="section-title">
+				<span class="section-icon" aria-hidden="true">🎓</span>
+				CE / EE Degree Designation
+			</h2>
+			<p class="section-desc">
+				Let <strong>E</strong> denote Areas 1–4 (Electrical) and <strong>C</strong> denote Areas 5–6 (Computer).
+				The table below shows all valid kernel/depth combinations and their resulting degree designation.
+				A profile may qualify for both CE and EE simultaneously.
+			</p>
+		</div>
+		<div class="table-wrap">
+			<table class="data-table designation-table">
+				<thead>
+					<tr>
+						<th>Kernel 1</th>
+						<th>Kernel 2</th>
+						<th>Kernel 3</th>
+						<th>Kernel 4</th>
+						<th>Depth 1</th>
+						<th>Depth 2</th>
+						<th class="designation-col">Designation</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each designationRows as row}
+						<tr>
+							{#each row as col, i}
+								{#if i === row.length - 1}
+									<td class="designation-badge">
+										<span class="badge badge-{col.toLowerCase()}">{col}</span>
+									</td>
+								{:else}
+									<td class="area-cell area-{col.toLowerCase()}">{col}</td>
+								{/if}
+							{/each}
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	</section>
 </main>
 
 <style>
-	.page { max-width: 1100px; margin: 0 auto; padding: 26px 18px 42px; }
-	h2 { margin: 20px 0 10px; }
-	p, li { color: var(--text-muted); line-height: 1.55; }
-	.table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: white; }
-	table { width: 100%; border-collapse: collapse; }
-	th, td { border-bottom: 1px solid var(--border); padding: 10px 12px; text-align: left; }
-	th { background: #f8faff; font-size: .82rem; text-transform: uppercase; letter-spacing: .2px; }
-	.notes { margin: 12px 0; padding-left: 22px; }
+	/* ── Page ─────────────────────────────────────────────────────────────────── */
+	.page {
+		max-width: 1100px;
+		margin: 0 auto;
+		padding: 28px 24px 60px;
+		display: grid;
+		gap: 22px;
+	}
+
+	/* ── Page header ─────────────────────────────────────────────────────────── */
+	.page-header {
+		animation: fade-in 0.45s ease;
+	}
+	.page-breadcrumb {
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.65rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--text-faint);
+		margin-bottom: 8px;
+	}
+	.page-title {
+		font-family: 'Cinzel', serif;
+		font-size: 1.7rem;
+		font-weight: 700;
+		color: var(--gold);
+		letter-spacing: 0.06em;
+		margin: 0 0 6px;
+	}
+	.page-subtitle {
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		margin: 0;
+		letter-spacing: 0.04em;
+	}
+
+	/* ── Section card ────────────────────────────────────────────────────────── */
+	.section-card {
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		overflow: hidden;
+		box-shadow: var(--shadow-sm);
+	}
+
+	.section-header {
+		padding: 20px 20px 0;
+	}
+
+	.section-title {
+		font-family: 'Cinzel', serif;
+		font-size: 1.05rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		color: var(--text);
+		margin: 0 0 6px;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.section-icon { font-size: 1rem; }
+
+	.section-desc {
+		font-size: 0.9rem;
+		color: var(--text-muted);
+		margin: 0 0 16px;
+		line-height: 1.6;
+	}
+
+	/* ── Table ───────────────────────────────────────────────────────────────── */
+	.table-wrap {
+		overflow-x: auto;
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.9rem;
+	}
+
+	.data-table th,
+	.data-table td {
+		border-bottom: 1px solid var(--border);
+		padding: 11px 16px;
+		text-align: left;
+		vertical-align: top;
+	}
+
+	.data-table thead th {
+		background: var(--surface-raised);
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.75rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+		font-weight: 500;
+		border-bottom: 2px solid var(--border);
+	}
+
+	.data-table tbody tr:last-child td,
+	.data-table tbody tr:last-child th {
+		border-bottom: none;
+	}
+
+	.data-table tbody tr:hover td,
+	.data-table tbody tr:hover th {
+		background: var(--surface-soft);
+	}
+
+	.row-label {
+		font-weight: 600;
+		color: var(--gold);
+		font-size: 0.88rem;
+		width: 220px;
+		white-space: nowrap;
+	}
+
+	/* ── CEAB table ──────────────────────────────────────────────────────────── */
+	.ceab-table th,
+	.ceab-table td {
+		text-align: center;
+		width: auto;
+	}
+
+	.ceab-legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 16px;
+		padding: 14px 18px;
+		border-top: 1px solid var(--border-soft);
+		background: var(--surface-soft);
+	}
+	.ceab-legend span {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	.ceab-legend strong {
+		color: var(--text);
+	}
+
+	/* ── Designation table ───────────────────────────────────────────────────── */
+	.designation-table th,
+	.designation-table td {
+		text-align: center;
+	}
+	.designation-col {
+		background: var(--surface-raised) !important;
+	}
+
+	.area-cell {
+		font-family: 'JetBrains Mono', monospace;
+		font-weight: 600;
+		font-size: 0.88rem;
+	}
+	.area-e { color: var(--ocean-light); }
+	.area-c { color: var(--gold); }
+
+	.designation-badge { text-align: center; }
+	.badge {
+		display: inline-block;
+		font-family: 'Cinzel', serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		padding: 3px 10px;
+		border-radius: 999px;
+		border: 1.5px solid;
+	}
+	.badge-ee {
+		background: rgba(32, 119, 178, 0.12);
+		border-color: var(--ocean);
+		color: var(--ocean-light);
+	}
+	.badge-ce {
+		background: rgba(201, 168, 76, 0.1);
+		border-color: var(--gold-dim);
+		color: var(--gold);
+	}
+
+	/* ── Notes ───────────────────────────────────────────────────────────────── */
+	.notes-section { padding: 20px; }
+	.notes-list {
+		margin: 12px 0 0;
+		padding-left: 20px;
+		display: grid;
+		gap: 8px;
+	}
+	.notes-list li {
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		line-height: 1.6;
+	}
+	.notes-list code {
+		font-family: 'JetBrains Mono', monospace;
+		background: var(--surface-raised);
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		padding: 1px 5px;
+		font-size: 0.82rem;
+		color: var(--ocean-bright);
+	}
+
+	.notice {
+		border-radius: var(--radius-sm);
+		padding: 10px 14px;
+		font-size: 0.84rem;
+		border: 1px solid;
+	}
+	.notice-warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
+
+	/* ── Responsive ──────────────────────────────────────────────────────────── */
+	@media (max-width: 700px) {
+		.page { padding: 18px 14px 40px; }
+		.row-label { width: auto; white-space: normal; }
+	}
 </style>

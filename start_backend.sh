@@ -29,14 +29,14 @@ source .venv/bin/activate
 
 # Check if Python dependencies are installed
 echo "Installing Python dependencies..."
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r requirements.txt
-python -m pip install -r requirements_api.txt
+.venv/bin/python -m pip install --upgrade pip setuptools wheel
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements_api.txt
 
 echo ""
 echo "Starting server on http://localhost:8000"
 echo "Press Ctrl+C to stop"
 echo ""
 
-python api_server.py
+.venv/bin/python api_server.py
 

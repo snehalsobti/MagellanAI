@@ -1,67 +1,101 @@
 /**
  * frontend/src/lib/auth.test.ts
  *
- * Unit tests for auth.ts:
- * - signIn persists mode to localStorage
- * - signOut removes mode
- * - getAuthMode returns stored mode or null
+ * Unit tests for auth.ts.
+ *
+ * auth.ts now wraps Supabase's browser client, so we mock:
+ *  - $app/environment  → browser: true
+ *  - $env/static/public → Supabase URL / anon key
+ *  - @supabase/ssr     → createBrowserClient
+ *
+ * We verify that the exported functions call the correct Supabase methods
+ * with the correct arguments.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// ── Mock SvelteKit environment ────────────────────────────────────────────────
 vi.mock('$app/environment', () => ({ browser: true }));
+vi.mock('$env/static/public', () => ({
+	PUBLIC_SUPABASE_URL: 'https://test.supabase.co',
+	PUBLIC_SUPABASE_ANON_KEY: 'test-anon-key'
+}));
 
-describe('auth utilities', () => {
+// ── Mock Supabase client ──────────────────────────────────────────────────────
+const mockSignInWithOAuth = vi.fn().mockResolvedValue({ data: {}, error: null });
+const mockSignInAnonymously = vi.fn().mockResolvedValue({ data: { user: { id: 'anon-id', is_anonymous: true } }, error: null });
+const mockSignOut = vi.fn().mockResolvedValue({ error: null });
+const mockGetSession = vi.fn().mockResolvedValue({ data: { session: null } });
+
+const mockSupabase = {
+	auth: {
+		signInWithOAuth: mockSignInWithOAuth,
+		signInAnonymously: mockSignInAnonymously,
+		signOut: mockSignOut,
+		getSession: mockGetSession
+	}
+};
+
+vi.mock('@supabase/ssr', () => ({
+	createBrowserClient: vi.fn(() => mockSupabase)
+}));
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+describe('auth module', () => {
 	beforeEach(() => {
-		localStorage.clear();
+		vi.clearAllMocks();
 		vi.resetModules();
 	});
 
-	it('signIn stores the auth mode', async () => {
-		const { signIn } = await import('./auth');
-		signIn('guest');
-		expect(localStorage.getItem('magellan_auth_mode')).toBe('guest');
+	it('supabase client is created with correct env vars', async () => {
+		const { createBrowserClient } = await import('@supabase/ssr');
+		// Trigger module load
+		await import('./auth');
+		expect(createBrowserClient).toHaveBeenCalledWith(
+			'https://test.supabase.co',
+			'test-anon-key'
+		);
 	});
 
-	it('signIn stores google mode', async () => {
-		const { signIn } = await import('./auth');
-		signIn('google');
-		expect(localStorage.getItem('magellan_auth_mode')).toBe('google');
+	it('signInWithGoogle calls signInWithOAuth with google provider', async () => {
+		// Set up window.location.origin
+		Object.defineProperty(window, 'location', {
+			value: { origin: 'http://localhost:5173' },
+			writable: true
+		});
+		const { signInWithGoogle } = await import('./auth');
+		await signInWithGoogle();
+		expect(mockSignInWithOAuth).toHaveBeenCalledWith({
+			provider: 'google',
+			options: { redirectTo: 'http://localhost:5173/auth/callback' }
+		});
 	});
 
-	it('signOut removes the key', async () => {
-		const { signIn, signOut } = await import('./auth');
-		signIn('guest');
-		signOut();
-		expect(localStorage.getItem('magellan_auth_mode')).toBeNull();
+	it('signInAnonymously calls supabase.auth.signInAnonymously', async () => {
+		const { signInAnonymously } = await import('./auth');
+		const result = await signInAnonymously();
+		expect(mockSignInAnonymously).toHaveBeenCalledOnce();
+		expect(result).toMatchObject({ data: { user: { is_anonymous: true } } });
 	});
 
-	it('getAuthMode returns null when not signed in', async () => {
-		const { getAuthMode } = await import('./auth');
-		expect(getAuthMode()).toBeNull();
+	it('signOut calls supabase.auth.signOut', async () => {
+		const { signOut } = await import('./auth');
+		await signOut();
+		expect(mockSignOut).toHaveBeenCalledOnce();
 	});
 
-	it('getAuthMode returns guest after signIn', async () => {
-		const { signIn, getAuthMode } = await import('./auth');
-		signIn('guest');
-		expect(getAuthMode()).toBe('guest');
+	it('getSession calls supabase.auth.getSession', async () => {
+		const { getSession } = await import('./auth');
+		const session = await getSession();
+		expect(mockGetSession).toHaveBeenCalledOnce();
+		expect(session).toBeNull();
 	});
 
-	it('getAuthMode returns google after signIn', async () => {
-		const { signIn, getAuthMode } = await import('./auth');
-		signIn('google');
-		expect(getAuthMode()).toBe('google');
-	});
-
-	it('getAuthMode returns null after signOut', async () => {
-		const { signIn, signOut, getAuthMode } = await import('./auth');
-		signIn('guest');
-		signOut();
-		expect(getAuthMode()).toBeNull();
-	});
-
-	it('getAuthMode rejects invalid stored values', async () => {
-		localStorage.setItem('magellan_auth_mode', 'admin'); // invalid
-		const { getAuthMode } = await import('./auth');
-		expect(getAuthMode()).toBeNull();
+	it('getSession returns session data when one exists', async () => {
+		mockGetSession.mockResolvedValueOnce({
+			data: { session: { user: { id: 'user-123' }, expires_at: 9999999 } }
+		});
+		const { getSession } = await import('./auth');
+		const session = await getSession();
+		expect(session).toMatchObject({ user: { id: 'user-123' } });
 	});
 });

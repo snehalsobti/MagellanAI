@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { getAuthMode } from '$lib/auth';
-	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { fetchConstraints } from '$lib/api/catalog';
 	import type { ProgramConstraints } from '$lib/api/catalog';
@@ -52,7 +50,7 @@
 	];
 
 	onMount(async () => {
-		if (!getAuthMode()) { goto('/signin'); return; }
+		// Server-side hooks.server.ts guards this route.
 		const result = await fetchConstraints();
 		if (result) {
 			constraints = result;

@@ -1,9 +1,17 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { getAuthMode } from '$lib/auth';
+	import { page } from '$app/stores';
+	import { signOut } from '$lib/auth';
 	import { theme } from '$lib/stores/theme';
 	import logo from '$lib/assets/magellanai_logo.png';
-	import { onMount } from 'svelte';
+	// User info from server-side session (set by +layout.server.ts).
+	const user = $derived($page.data.user);
+	const isGuest = $derived(user?.is_anonymous === true);
+	const displayName = $derived(
+		isGuest
+			? 'Guest'
+			: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
+	);
 
 	const destinations = [
 		{
@@ -32,13 +40,10 @@
 		}
 	];
 
-	function handleSignOut() {
-		import('$lib/auth').then(({ signOut }) => { signOut(); goto('/signin'); });
+	async function handleSignOut() {
+		await signOut();
+		goto('/signin');
 	}
-
-	onMount(() => {
-		if (!getAuthMode()) goto('/signin');
-	});
 </script>
 
 <svelte:head>
@@ -56,6 +61,12 @@
 			</div>
 		</div>
 		<div class="header-actions">
+			{#if user}
+				<span class="user-badge" title={isGuest ? 'Guest session' : user.email}>
+					{#if isGuest}👤{:else}✦{/if}
+					{displayName}
+				</span>
+			{/if}
 			<button type="button" class="theme-toggle" onclick={() => theme.toggle()} aria-label="Toggle theme">
 				{#if $theme === 'dark'}☀{:else}🌙{/if}
 			</button>
@@ -187,6 +198,19 @@
 		border-color: var(--gold-dim);
 		color: var(--gold);
 		box-shadow: var(--glow-gold);
+	}
+
+	.user-badge {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		padding: 5px 10px;
+		border-radius: 999px;
+		border: 1px solid var(--border);
+		background: var(--surface-raised);
+		white-space: nowrap;
+		max-width: 160px;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.btn-signout {

@@ -1,21 +1,52 @@
+import { createBrowserClient } from '@supabase/ssr';
 import { browser } from '$app/environment';
+import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
 
-const KEY = 'magellan_auth_mode';
+/**
+ * Singleton browser-side Supabase client.
+ * Only instantiated in the browser; null on the server (use event.locals.supabase there).
+ */
+export const supabase = browser
+	? createBrowserClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY)
+	: null;
 
-export type AuthMode = 'guest' | 'google';
-
-export function signIn(mode: AuthMode) {
-	if (!browser) return;
-	localStorage.setItem(KEY, mode);
+/**
+ * Initiates Google OAuth 2.0 sign-in.
+ * The browser is redirected to Google, then returns to /auth/callback with a code.
+ */
+export async function signInWithGoogle(): Promise<void> {
+	if (!supabase) return;
+	const origin = window.location.origin;
+	await supabase.auth.signInWithOAuth({
+		provider: 'google',
+		options: { redirectTo: `${origin}/auth/callback` }
+	});
 }
 
-export function signOut() {
-	if (!browser) return;
-	localStorage.removeItem(KEY);
+/**
+ * Signs in as an anonymous guest via Supabase anonymous auth.
+ * Creates a real (anonymous) Supabase session stored in cookies, allowing
+ * server-side route protection to work. History is persisted in Supabase
+ * under the anonymous user_id and cleaned up after 30 days.
+ */
+export async function signInAnonymously() {
+	if (!supabase) return { error: new Error('Not in browser') };
+	return supabase.auth.signInAnonymously();
 }
 
-export function getAuthMode(): AuthMode | null {
-	if (!browser) return null;
-	const mode = localStorage.getItem(KEY);
-	return mode === 'guest' || mode === 'google' ? mode : null;
+/**
+ * Signs out the current user (Google or anonymous) and clears the session.
+ */
+export async function signOut(): Promise<void> {
+	if (!supabase) return;
+	await supabase.auth.signOut();
+}
+
+/**
+ * Returns the current session, or null if unauthenticated.
+ */
+export async function getSession() {
+	if (!supabase) return null;
+	const { data } = await supabase.auth.getSession();
+	return data.session;
 }

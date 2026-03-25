@@ -1,15 +1,38 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { signIn } from '$lib/auth';
+	import { signInWithGoogle, signInAnonymously } from '$lib/auth';
+	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { theme } from '$lib/stores/theme';
 	import logo from '$lib/assets/magellanai_logo.png';
 
+	// Show a message if the user arrives here after a failed OAuth callback.
+	let authError = $derived($page.url.searchParams.get('error') === 'auth_callback_failed'
+		? 'Sign-in failed. Please try again.'
+		: null);
+
+	let googleLoading = $state(false);
+	let guestLoading = $state(false);
+
 	let canvas: HTMLCanvasElement;
 	let animationId: number;
 
-	function enter(mode: 'guest' | 'google') {
-		signIn(mode);
+	async function enterGoogle() {
+		googleLoading = true;
+		// signInWithGoogle() redirects the browser to Google — no return value needed.
+		await signInWithGoogle();
+		// If we get here the redirect didn't happen (e.g. popup blocked), reset state.
+		googleLoading = false;
+	}
+
+	async function enterGuest() {
+		guestLoading = true;
+		const { error } = (await signInAnonymously()) ?? {};
+		if (error) {
+			guestLoading = false;
+			authError = 'Could not start a guest session. Please try again.';
+			return;
+		}
 		goto('/options');
 	}
 
@@ -272,36 +295,53 @@
 			<span class="divider-symbol">⚓</span>
 		</div>
 
+		<!-- Auth error banner -->
+		{#if authError}
+			<div class="auth-error" role="alert">{authError}</div>
+		{/if}
+
 		<!-- Action buttons -->
 		<div class="actions">
 			<button
 				type="button"
 				class="btn btn-google"
-				onclick={() => enter('google')}
+				onclick={enterGoogle}
+				disabled={googleLoading || guestLoading}
 			>
-				<svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-					<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-					<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-					<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-					<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-				</svg>
-				Sign in with Google
+				{#if googleLoading}
+					<span class="btn-spinner" aria-hidden="true"></span>
+					Redirecting…
+				{:else}
+					<svg class="btn-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+						<path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+						<path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+						<path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+						<path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+					</svg>
+					Sign in with Google
+				{/if}
 			</button>
 			<button
 				type="button"
 				class="btn btn-guest"
-				onclick={() => enter('guest')}
+				onclick={enterGuest}
+				disabled={googleLoading || guestLoading}
 			>
-				<svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-					<path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/>
-					<path d="M19 21a7 7 0 1 0-14 0"/>
-				</svg>
-				Continue as Guest
+				{#if guestLoading}
+					<span class="btn-spinner btn-spinner-light" aria-hidden="true"></span>
+					Starting session…
+				{:else}
+					<svg class="btn-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z"/>
+						<path d="M19 21a7 7 0 1 0-14 0"/>
+					</svg>
+					Continue as Guest
+				{/if}
 			</button>
 		</div>
 
 		<p class="footnote">
-			All data is processed locally. No personal information is stored between sessions.
+			Google sign-in saves your history across sessions. Guest sessions are private to this browser.
 		</p>
 	</div>
 
@@ -532,6 +572,35 @@
 		box-shadow: 0 6px 22px rgba(32, 119, 178, 0.45);
 		filter: brightness(1.1);
 	}
+
+	/* ── Auth error banner ─────────────────────────────────────────────────── */
+	.auth-error {
+		background: rgba(192, 57, 43, 0.1);
+		border: 1px solid rgba(192, 57, 43, 0.35);
+		border-radius: 8px;
+		padding: 10px 14px;
+		font-size: 0.8rem;
+		color: var(--compass-red, #c0392b);
+		margin-bottom: 4px;
+		text-align: center;
+	}
+
+	/* ── Button spinner ────────────────────────────────────────────────────── */
+	.btn-spinner {
+		display: inline-block;
+		width: 14px;
+		height: 14px;
+		border: 2px solid rgba(0, 0, 0, 0.2);
+		border-top-color: var(--text);
+		border-radius: 50%;
+		animation: spin 0.7s linear infinite;
+		flex-shrink: 0;
+	}
+	.btn-spinner-light {
+		border-color: rgba(255, 255, 255, 0.3);
+		border-top-color: #fff;
+	}
+	@keyframes spin { to { transform: rotate(360deg); } }
 
 	/* ── Footnote ──────────────────────────────────────────────────────────── */
 	.footnote {

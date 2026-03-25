@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: magellanai-backend
+    runtime: python
+    plan: free           # Upgrade to "starter" ($7/mo) to avoid cold starts
+    region: oregon       # Choose the region closest to your users
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel &&
+      pip install -r requirements.txt &&
+      pip install -r requirements_api.txt
+    startCommand: python api_server.py
+    healthCheckPath: /health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false      # Set this manually in the Render dashboard (never in code)
+      - key: RAG_OPENAI_MODEL
+        value: gpt-4.1
+      - key: MAGELLAN_ALLOWED_ORIGINS
+        sync: false      # Set to your Vercel frontend URL, e.g. https://magellanai.vercel.app
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+    disk:
+      name: magellan-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1          # Holds magellan.db (~few MB) — 1 GB is the minimum

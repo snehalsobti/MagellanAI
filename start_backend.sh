@@ -6,15 +6,20 @@ echo "=========================================="
 echo "Starting MagellanAI Backend API Server"
 echo "=========================================="
 
-# Check if .env file exists
-if [ ! -f .env ]; then
-    echo "WARNING: .env file not found!"
-    echo "Please create a .env file with your OPENAI_API_KEY"
+# Load .env file if present, but don't require it
+# (env vars can also be set in the shell environment or on the hosting platform)
+if [ -f .env ]; then
+    echo "Loading environment variables from .env..."
+    set -a
+    source .env
+    set +a
+fi
+
+# Warn if critical env vars are missing but still attempt to start
+if [ -z "$OPENAI_API_KEY" ]; then
+    echo "WARNING: OPENAI_API_KEY is not set."
+    echo "Set it in a .env file, export it in your shell, or configure it on your hosting platform."
     echo ""
-    echo "Example:"
-    echo "  echo 'OPENAI_API_KEY=your_key_here' > .env"
-    echo ""
-    exit 1
 fi
 
 # Create virtual environment if it doesn't exist

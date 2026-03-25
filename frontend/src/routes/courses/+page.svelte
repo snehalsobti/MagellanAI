@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { getAuthMode } from '$lib/auth';
 	import { searchCourses, type CourseSearchFilters } from '$lib/api/catalog';
 	import type { CourseInfo } from '$lib/types/profile';
 	import CourseDetailsModal from '$lib/components/CourseDetailsModal.svelte';
@@ -26,7 +25,7 @@
 	let min_ed = '';
 
 	onMount(async () => {
-		if (!getAuthMode()) { goto('/signin'); return; }
+		// Server-side hooks.server.ts guards this route.
 		await runSearch();
 	});
 

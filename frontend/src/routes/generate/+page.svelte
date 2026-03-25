@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { getAuthMode } from '$lib/auth';
+	import { page } from '$app/stores';
+	import { supabase } from '$lib/auth';
+	import { loadSession, appendEntry, clearSession } from '$lib/api/history';
 	import { fetchYear12Courses } from '$lib/api/catalog';
 	import { generateProfile, regenerateProfile } from '$lib/api/profile';
 	import CourseDetailsModal from '$lib/components/CourseDetailsModal.svelte';
@@ -71,8 +73,25 @@
 	// ─────────────────────────────────────────────────────────────────────────
 
 	onMount(async () => {
-		if (!getAuthMode()) { goto('/signin'); return; }
+		// Server-side hooks.server.ts already guards this route.
+		// Restore history from Supabase if a client is available.
 		await refreshYear12Courses();
+		if (supabase) {
+			const saved = await loadSession(supabase);
+			if (saved.entries.length > 0) {
+				historyEntries = saved.entries;
+				originalPreferences = saved.originalPreferences;
+				if (saved.year12Choice === 'ECE295H1' || saved.year12Choice === 'ECE297H1') {
+					year12Choice = saved.year12Choice;
+				}
+				// Restore the most recent profile and feedback so the user can continue.
+				const latest = saved.entries[saved.entries.length - 1];
+				profile = latest.profile;
+				currentFeedback = { ...latest.feedback };
+				iterationCounter = latest.iteration + 1;
+				if (profile) updateCourseNameCache(profile);
+			}
+		}
 	});
 
 	async function refreshYear12Courses() {
@@ -132,6 +151,10 @@
 				? [...(profile.preferences_used || []), ...(profile.preferences_skipped || [])]
 				: [];
 			if (profile) updateCourseNameCache(profile);
+			// Persist to Supabase (fresh session — clear previous history first).
+			if (supabase && profile) {
+				await clearSession(supabase);
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to generate profile. Make sure the backend is running.';
 		} finally {
@@ -159,6 +182,8 @@
 		elapsedSeconds = 0;
 		loadingDots = '.';
 		cycleLoadingSteps();
+		// Clear persisted history for this user before generating a fresh profile.
+		if (supabase) await clearSession(supabase);
 		try {
 			profile = await generateProfile({
 				interests: interests.trim(),
@@ -232,6 +257,10 @@
 			viewingHistoryIdx = null;
 			profile = response;
 			updateCourseNameCache(response);
+			// Persist the new history entry to Supabase.
+			if (supabase) {
+				appendEntry(supabase, entry, originalPreferences, year12Choice).catch(() => {});
+			}
 
 			if (response.feedback_result) {
 				honorReport = {

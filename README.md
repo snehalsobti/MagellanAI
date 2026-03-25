@@ -521,6 +521,26 @@ The verifier runs 18 named checks on every profile:
 
 - `CatalogBridge` (abstract base class in `interfaces.py`) defines the contract between the ranking engine, profile generator, and the database. There are two implementations: `SQLiteCatalogAdapter` (production) and `InMemoryCatalogAdapter` (tests). Any new query that touches course data should go through this interface to stay adapter-agnostic.
 
+### Multi-area courses
+
+Some technical courses belong to **more than one** ECE technical area simultaneously. Real examples from the catalog:
+
+| Course | Areas |
+|---|---|
+| ECE302H1 (Probability and Applications) | 4, 5, 7 |
+| ECE437H1 | 1, 3 |
+| ECE469H1 | 1, 4, 5 |
+| ECE537H1 | 4, 5, 7 |
+| … and others (≈ 20 course-term pairs total) | |
+
+**How the database models this**: `course_classification` has a `UNIQUE (course_code, term, area)` constraint, so one offering can have several classification rows — one per area. The solver sees ECE302H1 F as three independent candidates (area 4, area 5, area 7) and picks whichever assignment best satisfies the breadth/depth constraints.
+
+**Rules for callers**:
+- `filter_courses()` and `get_technical_courses()` both return **one row per (course_code, term, area)** — a multi-area offering yields multiple rows. This is intentional and required for the solver to work correctly.
+- `get_course_offering(course_code, term)` returns **a single record** (LIMIT 1). It exists to fetch course-level data such as name, description, and CEAB attributes, which are the same regardless of area. It must **not** be used to determine which areas a course belongs to — always use `filter_courses` or `get_technical_courses` for that.
+- The generated profile is unique by course code: each code appears at most once in the final plan, even though it may have been a candidate in multiple areas.
+- `InMemoryCatalogAdapter` stores one `CourseOffering` per `(course_code, term)` and therefore **does not support multi-area courses**. It is intentionally limited to test use-cases where multi-area behaviour is not required.
+
 ---
 
 ## Troubleshooting

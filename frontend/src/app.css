@@ -1,21 +1,198 @@
-:root {
-	--bg: #f3f5fb;
-	--surface: #ffffff;
-	--surface-soft: #f8f9fd;
-	--text: #0f172a;
-	--text-muted: #5b6479;
-	--border: #e6e9f2;
-	--primary: #3b82f6;
-	--primary-strong: #2563eb;
-	--success-bg: #e9f9ef;
-	--success-text: #0f7a3f;
-	--danger-bg: #fdecec;
-	--danger-text: #b42318;
-	--shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
-	--shadow-md: 0 10px 28px rgba(15, 23, 42, 0.1);
-	--radius: 14px;
+/* ============================================================
+   MagellanAI — Nautical Cartography Theme
+   Deep-ocean dark mode (default) + aged-parchment light mode
+   ============================================================ */
+
+/* ── Google Fonts ─────────────────────────────────────────────────────────── */
+/* Cinzel: historical cartographic headings
+   Raleway: elegant body / UI text
+   JetBrains Mono: course codes & technical strings */
+
+/* ── Dark Theme (Deep-Ocean Cartography) ───────────────────────────────────── */
+:root,
+[data-theme='dark'] {
+	/* Backgrounds — deep blue/black base */
+	--bg:              #060c18;
+	--surface:         #0d1628;
+	--surface-raised:  #121f34;
+	--surface-soft:    #0a1020;
+	--surface-hover:   #18273e;
+
+	/* Borders */
+	--border:          #1e3352;
+	--border-soft:     #162844;
+
+	/* Text — warm white/cream for max readability without eye strain */
+	--text:            #F5E8D8;
+	--text-muted:      #D7DADC;
+	--text-faint:      #6a7888;
+
+	/* Brand Accent — Gold/Brass (luxurious warmth) */
+	--gold:            #DAA520;
+	--gold-dim:        #9A7015;
+	--gold-bright:     #F0C030;
+
+	/* Ocean / Primary Action — Electric Blue/Cyan (futuristic, high-tech) */
+	--ocean:           #2090C8;
+	--ocean-light:     #3DC2EC;
+	--ocean-bright:    #00D4F0;
+	--ocean-dim:       #14507A;
+
+	/* Compass North (danger/critical) */
+	--compass-red:     #FF6F61;
+	--compass-red-bg:  #2a0a0a;
+
+	/* Semantic colours */
+	--success-bg:      #041808;
+	--success-border:  #00c84e;
+	--success-text:    #00FF85;
+	--danger-bg:       #1e0404;
+	--danger-border:   #ff3a3a;
+	--danger-text:     #FF6F61;
+	--warn-bg:         #160e00;
+	--warn-border:     #DAA520;
+	--warn-text:       #F0C030;
+	--info-bg:         #040e1e;
+	--info-border:     #3DC2EC;
+	--info-text:       #00D4F0;
+
+	/* Feedback states
+	   Rule: bg must be clearly more luminous AND distinctly hued vs --surface (#0d1628)
+	   Approach: same as GitHub dark-mode diff — 2-4× more luminous, strong hue shift */
+
+	/* LOCK = Neon Green — vivid confirmed */
+	--fb-lock-bg:      #0c2e1a;
+	--fb-lock-border:  #00FF85;
+	--fb-lock-text:    #00FF85;
+	--fb-lock-accent:  #00FF85;
+
+	/* EXCLUDE = Deep Crimson — blocked */
+	--fb-exclude-bg:   #341010;
+	--fb-exclude-border: #FF6F61;
+	--fb-exclude-text:   #FF8070;
+	--fb-exclude-accent: #FF6F61;
+
+	/* LIKE = Lighter Slate — clean standout on dark */
+	--fb-like-bg:      #1c2c44;
+	--fb-like-border:  #D7DADC;
+	--fb-like-text:    #F5F6F7;
+	--fb-like-accent:  #D7DADC;
+
+	/* DISLIKE = Warm Amber-Brown */
+	--fb-dislike-bg:   #2e1c04;
+	--fb-dislike-border: #DAA520;
+	--fb-dislike-text:   #F0C030;
+	--fb-dislike-accent: #DAA520;
+
+	/* Shadows */
+	--shadow-sm:  0 2px 8px rgba(0, 0, 0, 0.5);
+	--shadow-md:  0 8px 28px rgba(0, 0, 0, 0.65);
+	--shadow-lg:  0 20px 60px rgba(0, 0, 0, 0.8);
+	--glow-gold:  0 0 22px rgba(218, 165, 32, 0.22);
+	--glow-ocean: 0 0 18px rgba(0, 212, 240, 0.2);
+
+	/* Radius */
+	--radius:   14px;
+	--radius-sm: 8px;
+	--radius-lg: 20px;
+
+	/* Grid decorative */
+	--grid-line: rgba(30, 51, 82, 0.7);
+
+	/* Scrollbar */
+	--scrollbar-bg:    #0d1628;
+	--scrollbar-thumb: #1e3352;
 }
 
+/* ── Light Theme (Warm Beige — Cartographic Manuscript) ────────────────────── */
+[data-theme='light'] {
+	/* Backgrounds — warm beige/parchment, avoid stark white */
+	--bg:              #EDE8DE;
+	--surface:         #F8F3E8;
+	--surface-raised:  #FDF9F2;
+	--surface-soft:    #E8E2D6;
+	--surface-hover:   #E0D8C8;
+
+	/* Borders — warm tan, earthy */
+	--border:          #C8B48A;
+	--border-soft:     #D8C8A5;
+
+	/* Text — midnight navy for deep contrast on warm beige */
+	--text:            #1A2540;
+	--text-muted:      #4A5870;
+	--text-faint:      #9AA8B8;
+
+	/* Brand Accent — Gold/Brass (warm luxury on beige) */
+	--gold:            #B87800;
+	--gold-dim:        #D4A030;
+	--gold-bright:     #C88800;
+
+	/* Ocean / Primary Action — deep navy (sophisticated on beige) */
+	--ocean:           #1A3A7A;
+	--ocean-light:     #2A5CAA;
+	--ocean-bright:    #1A3A7A;
+	--ocean-dim:       #C0D0E8;
+
+	/* Compass North */
+	--compass-red:     #B02820;
+	--compass-red-bg:  #F5E0DE;
+
+	/* Semantic — earthy/natural tones on beige */
+	--success-bg:      #E4F2E8;
+	--success-border:  #5A9A6A;
+	--success-text:    #1E5C30;
+	--danger-bg:       #F8E8E5;
+	--danger-border:   #C05040;
+	--danger-text:     #7A2018;
+	--warn-bg:         #FDF4E0;
+	--warn-border:     #B87800;
+	--warn-text:       #6A4800;
+	--info-bg:         #E8EEF8;
+	--info-border:     #5A7AAA;
+	--info-text:       #1A3A7A;
+
+	/* Feedback states — earthy, muted tones harmonious with warm beige */
+	/* LOCK = Sage/Olive Green */
+	--fb-lock-bg:      #E6F2EC;
+	--fb-lock-border:  #3A8A5A;
+	--fb-lock-text:    #1A5030;
+	--fb-lock-accent:  #3A8A5A;
+
+	/* EXCLUDE = Terracotta Red */
+	--fb-exclude-bg:   #F8E8E5;
+	--fb-exclude-border: #C0392B;
+	--fb-exclude-text:   #7A1A18;
+	--fb-exclude-accent: #C0392B;
+
+	/* LIKE = Soft Lavender/Dusty Purple */
+	--fb-like-bg:      #F0EAF8;
+	--fb-like-border:  #7A50C0;
+	--fb-like-text:    #3C1878;
+	--fb-like-accent:  #7A50C0;
+
+	/* DISLIKE = Terracotta/Burnt Orange */
+	--fb-dislike-bg:   #FDF0E5;
+	--fb-dislike-border: #C45A20;
+	--fb-dislike-text:   #6A2808;
+	--fb-dislike-accent: #C45A20;
+
+	/* Shadows */
+	--shadow-sm:  0 2px 8px rgba(26, 37, 64, 0.1);
+	--shadow-md:  0 8px 28px rgba(26, 37, 64, 0.16);
+	--shadow-lg:  0 20px 60px rgba(26, 37, 64, 0.22);
+	--glow-gold:  0 0 20px rgba(184, 120, 0, 0.15);
+	--glow-ocean: 0 0 16px rgba(26, 58, 122, 0.14);
+
+	--radius:   14px;
+	--radius-sm: 8px;
+	--radius-lg: 20px;
+
+	--grid-line: rgba(200, 180, 138, 0.55);
+	--scrollbar-bg:    #F8F3E8;
+	--scrollbar-thumb: #C8B48A;
+}
+
+/* ── Reset & Base ────────────────────────────────────────────────────────── */
 *,
 *::before,
 *::after {
@@ -29,14 +206,244 @@ body {
 	min-height: 100%;
 }
 
+html {
+	font-size: 17px;
+	-webkit-text-size-adjust: 100%;
+}
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
 body {
-	font-family:
-		Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue',
-		sans-serif;
-	background: radial-gradient(circle at top left, #eaf2ff 0%, var(--bg) 35%, #f5f7fc 100%);
+	font-family: 'Raleway', -apple-system, BlinkMacSystemFont, sans-serif;
+	font-weight: 400;
+	line-height: 1.6;
+	background-color: var(--bg);
+	color: var(--text);
+	transition: background-color 0.3s ease, color 0.2s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	font-family: 'Cinzel', serif;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	line-height: 1.25;
 	color: var(--text);
 }
 
+/* Course codes always use mono */
+code, .course-code, [class*='code'] {
+	font-family: 'JetBrains Mono', monospace;
+	font-size: 0.88em;
+}
+
 a {
-	color: inherit;
+	color: var(--ocean-light);
+	text-decoration: none;
+}
+a:hover {
+	color: var(--gold);
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+::-webkit-scrollbar-track {
+	background: var(--scrollbar-bg);
+}
+::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb);
+	border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: var(--border);
+}
+
+/* ── Coordinate-Grid Background ──────────────────────────────────────────── */
+/* Subtle cartographic grid overlay on body */
+[data-theme='dark'] body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+	background-image:
+		linear-gradient(var(--grid-line) 1px, transparent 1px),
+		linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+	background-size: 60px 60px;
+	opacity: 0.35;
+}
+
+[data-theme='light'] body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 0;
+	background-image:
+		linear-gradient(var(--grid-line) 1px, transparent 1px),
+		linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+	background-size: 60px 60px;
+	opacity: 0.45;
+}
+
+/* All main content sits above the grid */
+#svelte,
+body > div {
+	position: relative;
+	z-index: 1;
+}
+
+/* ── Global Component Styles ─────────────────────────────────────────────── */
+
+/* Buttons — base nautical style */
+button {
+	font-family: 'Raleway', sans-serif;
+	cursor: pointer;
+	transition: all 0.18s ease;
+}
+
+/* Universal cursor:pointer for all interactive elements */
+button,
+a,
+select,
+[role='button'],
+[role='option'],
+[role='tab'],
+[tabindex='0'],
+input[type='radio'],
+input[type='checkbox'] {
+	cursor: pointer;
+}
+
+/* Form inputs */
+input,
+select,
+textarea {
+	font-family: 'Raleway', sans-serif;
+	background: var(--surface);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+	outline: none;
+	border-color: var(--ocean-light);
+	box-shadow: 0 0 0 3px rgba(32, 119, 178, 0.2);
+}
+
+input::placeholder,
+textarea::placeholder {
+	color: var(--text-faint);
+}
+
+/* ── Card Base ───────────────────────────────────────────────────────────── */
+.card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow-sm);
+	transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+/* ── Gold Accent Divider ─────────────────────────────────────────────────── */
+.divider-gold {
+	border: none;
+	border-top: 1px solid var(--gold-dim);
+	opacity: 0.5;
+	margin: 16px 0;
+}
+
+/* ── Feedback state tints (shared across grid and panel) ─────────────────── */
+.fb-lock    { --fb-bg: var(--fb-lock-bg);    --fb-border: var(--fb-lock-border);    --fb-color: var(--fb-lock-text);    --fb-accent: var(--fb-lock-accent); }
+.fb-exclude { --fb-bg: var(--fb-exclude-bg); --fb-border: var(--fb-exclude-border); --fb-color: var(--fb-exclude-text); --fb-accent: var(--fb-exclude-accent); }
+.fb-like    { --fb-bg: var(--fb-like-bg);    --fb-border: var(--fb-like-border);    --fb-color: var(--fb-like-text);    --fb-accent: var(--fb-like-accent); }
+.fb-dislike { --fb-bg: var(--fb-dislike-bg); --fb-border: var(--fb-dislike-border); --fb-color: var(--fb-dislike-text); --fb-accent: var(--fb-dislike-accent); }
+
+/* ── Loading Animations ──────────────────────────────────────────────────── */
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}
+
+@keyframes compass-spin {
+	from { transform: rotate(0deg); }
+	to   { transform: rotate(360deg); }
+}
+
+@keyframes fade-in {
+	from { opacity: 0; transform: translateY(6px); }
+	to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+	0%, 100% { transform: translateY(0); }
+	50%       { transform: translateY(-6px); }
+}
+
+@keyframes pulse-gold {
+	0%, 100% { opacity: 0.7; }
+	50%       { opacity: 1; }
+}
+
+@keyframes shimmer {
+	0%   { background-position: -200% center; }
+	100% { background-position:  200% center; }
+}
+
+/* Compass spinner (replaces plain spinner) */
+.spinner-compass {
+	width: 28px;
+	height: 28px;
+	border: 2.5px solid var(--border);
+	border-top-color: var(--gold);
+	border-right-color: var(--ocean-light);
+	border-radius: 50%;
+	animation: compass-spin 0.9s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+	flex-shrink: 0;
+}
+
+.spinner-compass.sm {
+	width: 18px;
+	height: 18px;
+	border-width: 2px;
+}
+
+/* ── Chip / Tag ──────────────────────────────────────────────────────────── */
+.chip {
+	font-family: 'JetBrains Mono', monospace;
+	font-size: 0.74rem;
+	border-radius: 999px;
+	padding: 4px 10px;
+	border: 1px solid;
+	display: inline-block;
+}
+
+/* ── Notice banners ──────────────────────────────────────────────────────── */
+.notice {
+	border-radius: var(--radius-sm);
+	padding: 10px 14px;
+	font-size: 0.84rem;
+	border: 1px solid;
+	line-height: 1.5;
+}
+.notice-info    { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info-text); }
+.notice-warn    { background: var(--warn-bg);    border-color: var(--warn-border);    color: var(--warn-text); }
+.notice-success { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
+.notice-danger  { background: var(--danger-bg);  border-color: var(--danger-border);  color: var(--danger-text); }
+
+/* ── Utility ──────────────────────────────────────────────────────────────── */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
 }

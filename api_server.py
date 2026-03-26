@@ -551,8 +551,7 @@ async def regenerate_profile(request: Request, payload: RegenerateProfileRequest
     The caller is responsible for passing the original preferences list that was returned
     by the initial /generate-profile call.
 
-    Solver timeout is 30 seconds (vs. 15 seconds for initial generation) to accommodate
-    the additional hard constraints introduced by feedback.
+    Solver timeout is 30 seconds, consistent with the initial generation endpoint.
     """
     if not profile_generator:
         raise HTTPException(status_code=500, detail="Backend not initialized properly")

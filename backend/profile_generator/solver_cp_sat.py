@@ -42,7 +42,7 @@ class GlobalCpSatProfileSolver:
         excluded_codes: list[str] | None = None,
         liked_codes: list[str] | None = None,
         disliked_codes: list[str] | None = None,
-        timeout_seconds: float = 8.0,
+        timeout_seconds: float = 30.0,
     ) -> tuple[ProfileSolveResult | None, str]:
         """Solve for a feasible course profile satisfying all ECE constraints.
 

@@ -240,9 +240,9 @@ class TestFeedbackConstraints(unittest.TestCase):
             # 0.0001s is almost certain to timeout; we accept either outcome.
             self._gen(seed=1, timeout_seconds=0.0001)
 
-    def test_timeout_seconds_default_is_accepted(self):
-        """Passing explicit timeout_seconds=8.0 must work exactly like the default."""
-        result = self._gen(seed=123, timeout_seconds=8.0)
+    def test_timeout_seconds_explicit_is_accepted(self):
+        """Passing an explicit timeout_seconds value must be accepted by the solver."""
+        result = self._gen(seed=123, timeout_seconds=30.0)
         self.assertIn("courses", result)
         self.assertGreater(len(result["courses"]), 0)
 

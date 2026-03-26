@@ -1,12 +1,12 @@
 # Minimal requirements for the Render API server deployment.
-# Heavy data-pipeline deps (langchain, scikit-learn, scipy, openpyxl, odfpy,
-# rapidfuzz) are intentionally excluded — they are never imported at runtime by
-# api_server.py and would push memory past Render's 512 MB free-tier limit.
+#
+# sentence-transformers, torch, numpy, and pandas have been removed:
+# the ranking engine now uses an LLM-only pipeline (full catalog sent to
+# GPT-4 in a single call) so no local embedding model is needed.
+# This reduces the runtime memory footprint from ~450 MB to ~150 MB,
+# comfortably within Render's 512 MB free tier.
 
-# --- Core ML / RAG ---
-numpy
-pandas
-sentence-transformers
+# --- LLM / AI ---
 openai
 python-dotenv
 

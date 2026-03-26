@@ -6,4 +6,4 @@ __pycache__/
 .env
 .DS_Store
 .hf_cache/
-# .rag_cache/ is intentionally tracked so Render doesn't rebuild embeddings from scratch on every cold start
+.rag_cache/

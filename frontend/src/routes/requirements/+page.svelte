@@ -40,13 +40,22 @@
 		String(c.ceab_ed), String(c.ceab_es_ed),
 	];
 
-	const designationRows = [
-		['E', 'E', 'E', 'E', 'E', 'E', 'EE'],
-		['E', 'E', 'E', 'C', 'E', 'E', 'EE'],
-		['E', 'E', 'E', 'C', 'E', 'C', 'EE'],
-		['E', 'E', 'C', 'C', 'E', 'E', 'EE'],
-		['E', 'E', 'C', 'C', 'E', 'C', 'CE'],
-		['E', 'E', 'C', 'C', 'C', 'C', 'CE'],
+	const designationRules = [
+		{
+			designation: 'CE',
+			badgeClass: 'badge-ce',
+			condition: 'At least 4 of the 8 breadth+depth courses are from Areas 5–6 (Computer Engineering)'
+		},
+		{
+			designation: 'EE',
+			badgeClass: 'badge-ee',
+			condition: 'At least 5 of the 8 breadth+depth courses are from Areas 1–4 (Electrical Engineering)'
+		},
+		{
+			designation: 'CE / EE',
+			badgeClass: 'badge-ceee',
+			condition: 'Both CE and EE conditions are satisfied simultaneously (via appropriate elective choices)'
+		}
 	];
 
 	onMount(async () => {
@@ -188,41 +197,37 @@
 				CE / EE Degree Designation
 			</h2>
 			<p class="section-desc">
-				Let <strong>E</strong> denote Areas 1–4 (Electrical) and <strong>C</strong> denote Areas 5–6 (Computer).
-				The table below shows all valid kernel/depth combinations and their resulting degree designation.
-				A profile may qualify for both CE and EE simultaneously.
+				The designation is determined by how many of your <strong>eight breadth+depth courses</strong>
+				(four breadth kernels + four depth extras) fall in Computer vs Electrical areas.
+				Areas&nbsp;1–4 are Electrical Engineering; Areas&nbsp;5–6 are Computer Engineering.
 			</p>
 		</div>
 		<div class="table-wrap">
 			<table class="data-table designation-table">
 				<thead>
 					<tr>
-						<th>Kernel 1</th>
-						<th>Kernel 2</th>
-						<th>Kernel 3</th>
-						<th>Kernel 4</th>
-						<th>Depth 1</th>
-						<th>Depth 2</th>
 						<th class="designation-col">Designation</th>
+						<th>Condition (among the 8 breadth+depth courses)</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each designationRows as row}
+					{#each designationRules as rule}
 						<tr>
-							{#each row as col, i}
-								{#if i === row.length - 1}
-									<td class="designation-badge">
-										<span class="badge badge-{col.toLowerCase()}">{col}</span>
-									</td>
-								{:else}
-									<td class="area-cell area-{col.toLowerCase()}">{col}</td>
-								{/if}
-							{/each}
+							<td class="designation-badge">
+								<span class="badge {rule.badgeClass}">{rule.designation}</span>
+							</td>
+							<td>{rule.condition}</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
 		</div>
+		<p class="designation-note">
+			The eight courses are: one kernel from each of the four breadth areas, plus two additional courses
+			from each of the two depth areas. By appropriate choice of kernel courses as technical or free
+			electives, it may be possible to satisfy both CE and EE requirements simultaneously.
+			MagellanAI displays your designation in real time on the Generate page.
+		</p>
 	</section>
 </main>
 
@@ -370,21 +375,15 @@
 	/* ── Designation table ───────────────────────────────────────────────────── */
 	.designation-table th,
 	.designation-table td {
-		text-align: center;
+		text-align: left;
 	}
 	.designation-col {
 		background: var(--surface-raised) !important;
+		width: 130px;
+		white-space: nowrap;
 	}
 
-	.area-cell {
-		font-family: 'JetBrains Mono', monospace;
-		font-weight: 600;
-		font-size: 0.88rem;
-	}
-	.area-e { color: var(--ocean-light); }
-	.area-c { color: var(--gold); }
-
-	.designation-badge { text-align: center; }
+	.designation-badge { text-align: center; width: 130px; }
 	.badge {
 		display: inline-block;
 		font-family: 'Cinzel', serif;
@@ -404,6 +403,20 @@
 		background: rgba(201, 168, 76, 0.1);
 		border-color: var(--gold-dim);
 		color: var(--gold);
+	}
+	.badge-ceee {
+		background: var(--surface-raised);
+		border-color: var(--border);
+		color: var(--text-muted);
+	}
+
+	.designation-note {
+		font-size: 0.82rem;
+		color: var(--text-muted);
+		line-height: 1.65;
+		padding: 12px 20px 16px;
+		margin: 0;
+		border-top: 1px solid var(--border-soft);
 	}
 
 	/* ── Notes ───────────────────────────────────────────────────────────────── */

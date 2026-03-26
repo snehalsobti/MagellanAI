@@ -55,8 +55,8 @@ class ProfileGenerator:
             liked_codes: Courses to boost in the objective (soft, always safe).
             disliked_codes: Courses to penalise in the objective (soft, Option A –
                 never causes infeasibility; course is still placed if constraints require it).
-            timeout_seconds: CP-SAT wall-clock limit. Defaults to 8 s (initial
-                generation). Pass 15.0 for regeneration calls from the API.
+            timeout_seconds: CP-SAT wall-clock limit. Defaults to 15 s (initial
+                generation). Pass 30.0 for regeneration calls from the API.
 
         Raises:
             SolverTimeoutError: Solver ran out of time without finding a solution.
@@ -74,7 +74,7 @@ class ProfileGenerator:
         excluded_clean = self._normalize_code_list(excluded_codes or [])
         liked_clean = self._normalize_code_list(liked_codes or [])
         disliked_clean = self._normalize_code_list(disliked_codes or [])
-        effective_timeout = timeout_seconds if timeout_seconds is not None else 8.0
+        effective_timeout = timeout_seconds if timeout_seconds is not None else 15.0
 
         solved, solve_status = solver.solve(
             preferred_codes=preferences_clean,

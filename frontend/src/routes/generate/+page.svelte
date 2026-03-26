@@ -6,8 +6,12 @@
 	import { loadSession, appendEntry, clearSession } from '$lib/api/history';
 	import { fetchYear12Courses } from '$lib/api/catalog';
 	import { generateProfile, regenerateProfile } from '$lib/api/profile';
+	import { exportProfile, importProfile } from '$lib/api/profileIo';
+	import type { SavedProfile } from '$lib/api/savedProfiles';
+	import { computeDesignation } from '$lib/utils/designation';
 	import CourseDetailsModal from '$lib/components/CourseDetailsModal.svelte';
 	import SlotEditor from '$lib/components/SlotEditor.svelte';
+	import SavedProfilesModal from '$lib/components/SavedProfilesModal.svelte';
 	import type { CourseInfo, ProfileResponse } from '$lib/types/profile';
 	import {
 		type FeedbackState,
@@ -55,6 +59,12 @@
 	// ── Course name cache ─────────────────────────────────────────────────────
 	let courseNameCache: Record<string, string> = {};
 
+	// ── Profile I/O (Feature 7 & 4) ───────────────────────────────────────────
+	let isGoogleUser = false;
+	let showSavedProfilesModal = false;
+	let importFileInput: HTMLInputElement;
+	let importError: string | null = null;
+
 	function updateCourseNameCache(p: ProfileResponse) {
 		const updates: Record<string, string> = {};
 		for (const c of p.courses) updates[c.course_code] = c.course_name;
@@ -67,6 +77,59 @@
 		honorReport = null;
 	}
 
+	// ── Profile Export / Import (Feature 7) ──────────────────────────────────
+
+	function handleExport() {
+		if (!profile) return;
+		exportProfile(profile, currentFeedback, originalPreferences, interests, year12Choice);
+	}
+
+	function triggerImport() {
+		importError = null;
+		importFileInput?.click();
+	}
+
+	async function handleImportFile(event: Event) {
+		const file = (event.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		importError = null;
+		try {
+			const data = await importProfile(file);
+			profile = data.profile;
+			currentFeedback = data.feedback ?? {};
+			originalPreferences = data.original_preferences ?? [];
+			if (data.year12_choice === 'ECE295H1' || data.year12_choice === 'ECE297H1') {
+				year12Choice = data.year12_choice;
+			}
+			if (data.interests) interests = data.interests;
+			historyEntries = [];
+			viewingHistoryIdx = null;
+			iterationCounter = 1;
+			if (profile) updateCourseNameCache(profile);
+			if (supabase) await clearSession(supabase);
+		} catch (e) {
+			importError = e instanceof Error ? e.message : 'Import failed.';
+		}
+		(event.target as HTMLInputElement).value = '';
+	}
+
+	// ── Cloud Profiles — Load (Feature 4) ────────────────────────────────────
+
+	function handleLoadFromSaved(saved: SavedProfile) {
+		profile = saved.profile;
+		currentFeedback = saved.feedback ?? {};
+		originalPreferences = saved.original_preferences ?? [];
+		if (saved.year12_choice === 'ECE295H1' || saved.year12_choice === 'ECE297H1') {
+			year12Choice = saved.year12_choice as 'ECE295H1' | 'ECE297H1';
+		}
+		if (saved.interests) interests = saved.interests;
+		historyEntries = [];
+		viewingHistoryIdx = null;
+		iterationCounter = 1;
+		if (profile) updateCourseNameCache(profile);
+		if (supabase) clearSession(supabase).catch(() => {});
+	}
+
 	// ── Course detail modal ───────────────────────────────────────────────────
 	let selectedCourse: CourseInfo | null = null;
 
@@ -77,6 +140,11 @@
 		// Restore history from Supabase if a client is available.
 		await refreshYear12Courses();
 		if (supabase) {
+			const {
+				data: { user }
+			} = await supabase.auth.getUser();
+			isGoogleUser = user?.app_metadata?.provider === 'google';
+
 			const saved = await loadSession(supabase);
 			if (saved.entries.length > 0) {
 				historyEntries = saved.entries;
@@ -232,7 +300,7 @@
 			});
 
 			if (response.timed_out) {
-				regenError = '⏱ The solver timed out (15 s) with these constraints. Your current profile is unchanged. Try fewer or less restrictive constraints.';
+				regenError = '⏱ The solver timed out (30 s) with these constraints. Your current profile is unchanged. Try fewer or less restrictive constraints.';
 				return;
 			}
 			if (response.feedback_infeasible) {
@@ -405,6 +473,7 @@
 
 	$: displayProfile = viewingHistoryIdx !== null ? historyEntries[viewingHistoryIdx]?.profile ?? null : profile;
 	$: isReadOnly = viewingHistoryIdx !== null;
+	$: designation = displayProfile ? computeDesignation(displayProfile) : null;
 	$: mapped = displayProfile ? courseMap(displayProfile) : new Map<string, CourseInfo>();
 	$: buckets = displayProfile ? computeProgramBuckets(displayProfile) : null;
 	$: year1Courses = year12Courses.filter((c) => courseLevel(c) === 1);
@@ -531,6 +600,38 @@
 					Generate My Course Profile
 				{/if}
 			</button>
+
+			<!-- Secondary actions: Import / Cloud -->
+			<div class="secondary-actions">
+				<button
+					type="button"
+					class="btn-secondary"
+					disabled={loading || regenerating}
+					on:click={triggerImport}
+					title="Import a previously exported JSON profile"
+				>
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+						<polyline points="17 8 12 3 7 8"/>
+						<line x1="12" y1="3" x2="12" y2="15"/>
+					</svg>
+					Import from File
+				</button>
+				{#if isGoogleUser}
+					<button
+						type="button"
+						class="btn-secondary"
+						disabled={loading || regenerating}
+						on:click={() => (showSavedProfilesModal = true)}
+						title="Save and load profiles from your Google account"
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+							<path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
+						</svg>
+						Cloud Profiles
+					</button>
+				{/if}
+			</div>
 		</form>
 	</section>
 
@@ -713,6 +814,48 @@
 			</div>
 		{/if}
 
+		<!-- ── Profile actions toolbar ────────────────────────────────────── -->
+		<div class="profile-toolbar">
+			<div class="pt-left">
+				{#if importError}
+					<span class="pt-error">⚠ {importError}</span>
+				{/if}
+			</div>
+			<div class="pt-right">
+				<button type="button" class="btn-pt" on:click={handleExport} title="Download profile as JSON file">
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+						<polyline points="7 10 12 15 17 10"/>
+						<line x1="12" y1="15" x2="12" y2="3"/>
+					</svg>
+					Export JSON
+				</button>
+				<button type="button" class="btn-pt" on:click={() => window.print()} title="Print or save as PDF">
+					<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+						<polyline points="6 9 6 2 18 2 18 9"/>
+						<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+						<rect x="6" y="14" width="12" height="8"/>
+					</svg>
+					Print / PDF
+				</button>
+				{#if isGoogleUser && !isReadOnly}
+					<button
+						type="button"
+						class="btn-pt btn-pt-save"
+						on:click={() => (showSavedProfilesModal = true)}
+						title="Save this profile to your Google account"
+					>
+						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+							<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+							<polyline points="17 21 17 13 7 13 7 21"/>
+							<polyline points="7 3 7 8 15 8"/>
+						</svg>
+						Save to Cloud
+					</button>
+				{/if}
+			</div>
+		</div>
+
 			<div class="stack">
 				<!-- ── Profile overview ──────────────────────────────────────── -->
 				<section class="result-card">
@@ -737,17 +880,23 @@
 							<span class="stat-label">Depth Areas</span>
 							<strong class="stat-value">{displayProfile.depth_areas_selected.join(', ')}</strong>
 						</div>
-						<div class="stat-cell {displayProfile.constraints_satisfied ? 'stat-ok' : 'stat-bad'}">
-							<span class="stat-label">Constraints</span>
-							<strong class="stat-value">{displayProfile.constraints_satisfied ? '✓ All Met' : '✗ Unmet'}</strong>
-						</div>
-						{#if displayProfile.solver_runtime_ms !== null && displayProfile.solver_runtime_ms !== undefined}
-							<div class="stat-cell">
-								<span class="stat-label">Solver Time</span>
-								<strong class="stat-value">{(displayProfile.solver_runtime_ms / 1000).toFixed(2)}s</strong>
-							</div>
-						{/if}
+					<div class="stat-cell {displayProfile.constraints_satisfied ? 'stat-ok' : 'stat-bad'}">
+						<span class="stat-label">Constraints</span>
+						<strong class="stat-value">{displayProfile.constraints_satisfied ? '✓ All Met' : '✗ Unmet'}</strong>
 					</div>
+					{#if designation}
+						<div class="stat-cell {designation.ce && designation.ee ? 'stat-ceee' : designation.ce ? 'stat-ce' : 'stat-ee'}">
+							<span class="stat-label">Designation</span>
+							<strong class="stat-value">{designation.label}</strong>
+						</div>
+					{/if}
+					{#if displayProfile.solver_runtime_ms !== null && displayProfile.solver_runtime_ms !== undefined}
+						<div class="stat-cell">
+							<span class="stat-label">Solver Time</span>
+							<strong class="stat-value">{(displayProfile.solver_runtime_ms / 1000).toFixed(2)}s</strong>
+						</div>
+					{/if}
+				</div>
 				</section>
 
 				<!-- ── Semester plan grid ─────────────────────────────────────── -->
@@ -1061,6 +1210,30 @@
 		anchorRect={slotEditorAnchorRect}
 		onSet={(state) => handleSlotEditorSet(slotEditorCode!, state)}
 		onClose={closeSlotEditor}
+	/>
+{/if}
+
+<!-- Hidden file input for JSON import -->
+<input
+	type="file"
+	accept=".json,application/json"
+	bind:this={importFileInput}
+	on:change={handleImportFile}
+	style="display:none"
+	aria-hidden="true"
+/>
+
+<!-- Cloud profiles modal (Google users only) -->
+{#if showSavedProfilesModal && supabase}
+	<SavedProfilesModal
+		{supabase}
+		currentProfile={profile}
+		currentFeedback={currentFeedback}
+		{originalPreferences}
+		{year12Choice}
+		{interests}
+		onLoad={handleLoadFromSaved}
+		onClose={() => (showSavedProfilesModal = false)}
 	/>
 {/if}
 
@@ -1574,6 +1747,12 @@
 	.stat-ok .stat-value { color: var(--success-text); }
 	.stat-bad { border-color: var(--danger-border); background: var(--danger-bg); }
 	.stat-bad .stat-value { color: var(--danger-text); }
+	.stat-ce { border-color: var(--gold-dim); background: rgba(201, 168, 76, 0.08); }
+	.stat-ce .stat-value { color: var(--gold); }
+	.stat-ee { border-color: var(--ocean-dim); background: rgba(32, 119, 178, 0.08); }
+	.stat-ee .stat-value { color: var(--ocean-bright); }
+	.stat-ceee { border-color: var(--border); background: var(--surface-raised); }
+	.stat-ceee .stat-value { color: var(--text); }
 
 	/* ── Grid header ──────────────────────────────────────────────────────────── */
 	.grid-header {
@@ -2027,6 +2206,123 @@
 	}
 	.empty-icon { font-size: 2.5rem; opacity: 0.3; }
 	.empty-text { color: var(--text-muted); font-size: 0.9rem; max-width: 360px; margin: 0; line-height: 1.6; }
+
+	/* ── Secondary actions (prompt panel) ────────────────────────────────────── */
+	.secondary-actions {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.btn-secondary {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 7px 12px;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--border);
+		background: var(--surface-raised);
+		color: var(--text-muted);
+		font-family: 'Raleway', sans-serif;
+		font-size: 0.78rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.16s ease;
+	}
+	.btn-secondary:hover:not(:disabled) {
+		border-color: var(--ocean-dim);
+		color: var(--ocean-light);
+		background: rgba(32, 119, 178, 0.07);
+	}
+	.btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+	/* ── Profile toolbar ─────────────────────────────────────────────────────── */
+	.profile-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		flex-wrap: wrap;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding: 8px 12px;
+		box-shadow: var(--shadow-sm);
+	}
+	.pt-left { flex: 1; min-width: 0; }
+	.pt-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+	.pt-error {
+		font-size: 0.8rem;
+		color: var(--danger-text);
+		background: var(--danger-bg);
+		border: 1px solid var(--danger-border);
+		border-radius: var(--radius-sm);
+		padding: 4px 10px;
+		display: inline-block;
+	}
+	.btn-pt {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 5px 11px;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--border);
+		background: var(--surface-raised);
+		color: var(--text-muted);
+		font-family: 'Raleway', sans-serif;
+		font-size: 0.77rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		white-space: nowrap;
+	}
+	.btn-pt:hover {
+		border-color: var(--ocean-dim);
+		color: var(--ocean-light);
+		background: rgba(32, 119, 178, 0.07);
+	}
+	.btn-pt-save {
+		border-color: var(--gold-dim);
+		color: var(--gold);
+		background: rgba(201, 168, 76, 0.07);
+	}
+	.btn-pt-save:hover {
+		background: rgba(201, 168, 76, 0.16);
+		border-color: var(--gold);
+		color: var(--gold);
+	}
+
+	/* ── Print styles ────────────────────────────────────────────────────────── */
+	@media print {
+		.prompt-panel,
+		.nav-bar,
+		.feedback-actions,
+		.readonly-banner,
+		.profile-toolbar,
+		.feedback-panel-card,
+		.loading-card,
+		.error-card,
+		.empty-state,
+		.btn-fresh,
+		.btn-regen,
+		.btn-generate,
+		.gear-btn,
+		.btn-clear-all,
+		.honor-report {
+			display: none !important;
+		}
+		.page { padding: 0; gap: 10px; max-width: none; }
+		.result-card {
+			border: 1px solid #ccc;
+			box-shadow: none;
+			break-inside: avoid;
+			page-break-inside: avoid;
+		}
+		.semester-grid { gap: 4px; }
+		.course-cell { border: 1px solid #ccc; padding: 4px; font-size: 0.78rem; }
+		.cell-name { display: block !important; font-size: 0.7rem; }
+		.stats-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+		.stat-cell { padding: 6px 8px; }
+	}
 
 	/* ── Responsive ──────────────────────────────────────────────────────────── */
 	@media (max-width: 980px) {

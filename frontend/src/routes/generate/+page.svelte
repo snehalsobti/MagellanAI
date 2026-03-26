@@ -4,7 +4,7 @@
 	import { page } from '$app/stores';
 	import { supabase } from '$lib/auth';
 	import { loadSession, appendEntry, clearSession } from '$lib/api/history';
-	import { fetchYear12Courses } from '$lib/api/catalog';
+	import { fetchYear12Courses, fetchConstraints, type ProgramConstraints } from '$lib/api/catalog';
 	import { generateProfile, regenerateProfile } from '$lib/api/profile';
 	import CourseDetailsModal from '$lib/components/CourseDetailsModal.svelte';
 	import SlotEditor from '$lib/components/SlotEditor.svelte';
@@ -41,6 +41,11 @@
 	let regenError: string | null = null;
 	let iterationCounter = 0;
 
+	// True when the current iteration-1 profile was already written to Supabase
+	// by handleSubmit / handleGenerateFresh, so handleRegenerate can skip
+	// re-writing that entry (avoiding a duplicate row for iter 1).
+	let initialProfilePersistedToDb = false;
+
 	// ── Iteration history ─────────────────────────────────────────────────────
 	let historyEntries: HistoryEntry[] = [];
 	let viewingHistoryIdx: number | null = null;
@@ -51,6 +56,17 @@
 
 	// ── Feedback memory panel ─────────────────────────────────────────────────
 	let feedbackPanelOpen = true;
+
+	// ── Program constraints (fetched from /constraints to avoid hardcoding) ──
+	let programConstraints: ProgramConstraints | null = null;
+
+	/** Returns true if the given code is a capstone course.
+	 *  Uses server-provided capstone_codes when available; falls back to the
+	 *  static list in feedback.ts so the check works even before the fetch completes. */
+	function checkIsCapstone(code: string): boolean {
+		if (programConstraints) return programConstraints.capstone_codes.includes(code);
+		return isCapstoneCode(code);
+	}
 
 	// ── Course name cache ─────────────────────────────────────────────────────
 	let courseNameCache: Record<string, string> = {};
@@ -74,21 +90,39 @@
 
 	onMount(async () => {
 		// Server-side hooks.server.ts already guards this route.
+		// Fetch program constraints (capstone codes, slot counts, etc.) from the
+		// backend SSOT so the frontend never hardcodes ECE program values.
+		fetchConstraints().then((c) => { if (c) programConstraints = c; });
+
 		// Restore history from Supabase if a client is available.
 		await refreshYear12Courses();
 		if (supabase) {
 			const saved = await loadSession(supabase);
 			if (saved.entries.length > 0) {
-				historyEntries = saved.entries;
 				originalPreferences = saved.originalPreferences;
 				if (saved.year12Choice === 'ECE295H1' || saved.year12Choice === 'ECE297H1') {
 					year12Choice = saved.year12Choice;
 				}
-				// Restore the most recent profile and feedback so the user can continue.
 				const latest = saved.entries[saved.entries.length - 1];
+
+				// If only one entry exists and it has no feedback (the initial profile
+				// stored by handleSubmit/handleGenerateFresh), treat it as the current
+				// profile rather than a past history entry so the dropdown doesn't
+				// immediately show "Iteration 1" as history right after a first generate.
+				const isSingleInitialEntry =
+					saved.entries.length === 1 &&
+					Object.keys(latest.feedback).length === 0;
+
+				if (isSingleInitialEntry) {
+					historyEntries = [];
+					iterationCounter = latest.iteration;
+				} else {
+					historyEntries = saved.entries;
+					iterationCounter = latest.iteration + 1;
+				}
+
 				profile = latest.profile;
 				currentFeedback = { ...latest.feedback };
-				iterationCounter = latest.iteration + 1;
 				if (profile) updateCourseNameCache(profile);
 			}
 		}
@@ -126,20 +160,21 @@
 	async function handleSubmit(event: SubmitEvent) {
 		event.preventDefault();
 		if (!interests.trim()) { error = 'Please enter your interests.'; return; }
-		loading = true;
-		error = null;
-		profile = null;
-		regenError = null;
-		honorReport = null;
-		noFeedbackNotice = false;
-		elapsedSeconds = 0;
-		loadingDots = '.';
-		currentFeedback = {};
-		historyEntries = [];
-		viewingHistoryIdx = null;
-		iterationCounter = 0;
-		originalPreferences = [];
-		cycleLoadingSteps();
+	loading = true;
+	error = null;
+	profile = null;
+	regenError = null;
+	honorReport = null;
+	noFeedbackNotice = false;
+	elapsedSeconds = 0;
+	loadingDots = '.';
+	currentFeedback = {};
+	historyEntries = [];
+	viewingHistoryIdx = null;
+	iterationCounter = 0;
+	originalPreferences = [];
+	initialProfilePersistedToDb = false;
+	cycleLoadingSteps();
 		try {
 			profile = await generateProfile({
 				interests: interests.trim(),
@@ -151,9 +186,16 @@
 				? [...(profile.preferences_used || []), ...(profile.preferences_skipped || [])]
 				: [];
 			if (profile) updateCourseNameCache(profile);
-			// Persist to Supabase (fresh session — clear previous history first).
+			// Persist iteration 1 to Supabase: clear old history first, then write the
+			// initial profile so a page refresh always restores the session correctly.
 			if (supabase && profile) {
 				await clearSession(supabase);
+				const initEntry = { iteration: 1, profile, feedback: {}, timestamp: Date.now() };
+				appendEntry(supabase, initEntry, originalPreferences, year12Choice)
+					.then(() => { initialProfilePersistedToDb = true; })
+					.catch((e) => {
+						console.warn('[history] Could not persist initial profile — history may be lost on refresh.', e);
+					});
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to generate profile. Make sure the backend is running.';
@@ -168,22 +210,23 @@
 	async function handleGenerateFresh(event: MouseEvent) {
 		event.preventDefault();
 		if (!interests.trim()) { error = 'Please enter your interests.'; return; }
-		loading = true;
-		error = null;
-		regenError = null;
-		honorReport = null;
-		noFeedbackNotice = false;
-		profile = null;
-		currentFeedback = {};
-		historyEntries = [];
-		viewingHistoryIdx = null;
-		iterationCounter = 0;
-		originalPreferences = [];
-		elapsedSeconds = 0;
-		loadingDots = '.';
-		cycleLoadingSteps();
-		// Clear persisted history for this user before generating a fresh profile.
-		if (supabase) await clearSession(supabase);
+	loading = true;
+	error = null;
+	regenError = null;
+	honorReport = null;
+	noFeedbackNotice = false;
+	profile = null;
+	currentFeedback = {};
+	historyEntries = [];
+	viewingHistoryIdx = null;
+	iterationCounter = 0;
+	originalPreferences = [];
+	initialProfilePersistedToDb = false;
+	elapsedSeconds = 0;
+	loadingDots = '.';
+	cycleLoadingSteps();
+	// Clear persisted history for this user before generating a fresh profile.
+	if (supabase) await clearSession(supabase);
 		try {
 			profile = await generateProfile({
 				interests: interests.trim(),
@@ -196,6 +239,15 @@
 				...(profile?.preferences_skipped || [])
 			];
 			if (profile) updateCourseNameCache(profile);
+			// Persist iteration 1 to Supabase so a page refresh restores it correctly.
+			if (supabase && profile) {
+				const initEntry = { iteration: 1, profile, feedback: {}, timestamp: Date.now() };
+				appendEntry(supabase, initEntry, originalPreferences, year12Choice)
+					.then(() => { initialProfilePersistedToDb = true; })
+					.catch((e) => {
+						console.warn('[history] Could not persist initial profile — history may be lost on refresh.', e);
+					});
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to generate profile. Make sure the backend is running.';
 		} finally {
@@ -251,15 +303,22 @@
 				feedback: submittedFeedback,
 				timestamp: Date.now()
 			};
+			// Capture whether the initial profile was already written to Supabase
+			// before updating historyEntries (which resets that state indirectly).
+			const skipAppend = initialProfilePersistedToDb && historyEntries.length === 0;
 			historyEntries = [...historyEntries, entry].slice(-HISTORY_LIMIT);
 			iterationCounter += 1;
+			initialProfilePersistedToDb = false;
 			currentFeedback = { ...submittedFeedback };
 			viewingHistoryIdx = null;
 			profile = response;
 			updateCourseNameCache(response);
-			// Persist the new history entry to Supabase.
-			if (supabase) {
-				appendEntry(supabase, entry, originalPreferences, year12Choice).catch(() => {});
+			// Persist the history entry to Supabase, unless the initial profile was
+			// already written by handleSubmit/handleGenerateFresh (avoids duplicates).
+			if (supabase && !skipAppend) {
+				appendEntry(supabase, entry, originalPreferences, year12Choice).catch((e) => {
+					console.warn('[history] Could not persist history entry — history may be lost on refresh.', e);
+				});
 			}
 
 			if (response.feedback_result) {
@@ -391,8 +450,9 @@
 			return picked;
 		};
 
+		const activeCapstoneCodes = programConstraints?.capstone_codes ?? ['ECE496Y1', 'APS490Y1', 'BME498Y1'];
 		const engEcon = pick((c) => c.course_code === 'ECE472H1', 1);
-		const capstone = pick((c) => ['ECE496Y1', 'APS490Y1', 'BME498Y1'].includes(c.course_code), 1);
+		const capstone = pick((c) => activeCapstoneCodes.includes(c.course_code), 1);
 		const sciMath = pick((c) => c.area === 7, 1);
 		const technicalElectives = pick((c) => c.technical_elective && c.course_code !== 'ECE472H1', 3);
 		const hsscs = pick((c) => ['hss', 'cs'].includes((c.non_technical_type || '').toLowerCase()), 4);
@@ -1057,7 +1117,7 @@
 	<SlotEditor
 		course={mapped.get(slotEditorCode) ?? null}
 		currentState={currentFeedback[slotEditorCode] ?? null}
-		isCapstone={isCapstoneCode(slotEditorCode)}
+		isCapstone={checkIsCapstone(slotEditorCode)}
 		anchorRect={slotEditorAnchorRect}
 		onSet={(state) => handleSlotEditorSet(slotEditorCode!, state)}
 		onClose={closeSlotEditor}

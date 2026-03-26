@@ -90,10 +90,12 @@ export async function appendEntry(
 	if (error) console.error('[history] appendEntry failed:', error.message);
 
 	// Prune: keep only the most recent HISTORY_LIMIT rows for this user.
-	// We fetch IDs beyond the limit and delete them.
+	// Always filter by user_id explicitly rather than relying solely on RLS,
+	// so this is safe even if RLS is ever relaxed or bypassed.
 	const { data: rows } = await supabase
 		.from(TABLE)
 		.select('id, created_at')
+		.eq('user_id', user.id)
 		.order('created_at', { ascending: false });
 
 	if (rows && rows.length > HISTORY_LIMIT) {

@@ -18,6 +18,7 @@
 import os
 import json
 import re
+import warnings
 
 import openai
 from dotenv import load_dotenv
@@ -67,7 +68,7 @@ def _build_catalog_block(bridge: CatalogBridge) -> tuple[list[str], str]:
 def rag_model(
     user_prompt: str,
     k: int = 10,
-    retrieval_k: int | None = None,  # retained for API compatibility, unused
+    retrieval_k: int | None = None,
     bridge: CatalogBridge | None = None,
 ) -> list[str]:
     """
@@ -86,6 +87,14 @@ def rag_model(
         List of up to k course code strings.  Falls back to the first k courses
         in catalog order if the LLM call fails.
     """
+    if retrieval_k is not None:
+        warnings.warn(
+            "rag_model: retrieval_k is no longer used (the pipeline is LLM-only). "
+            "Remove this argument from the caller to suppress this warning.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     if not isinstance(user_prompt, str) or not user_prompt.strip():
         return []
 

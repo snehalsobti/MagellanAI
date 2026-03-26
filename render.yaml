@@ -22,5 +22,7 @@ services:
         value: "3.11.0"
       - key: HF_HOME
         value: /opt/render/project/src/.hf_cache
+      - key: PYTHONUNBUFFERED
+        value: "1"
     # No persistent disk needed: data/magellan.db is committed to git and is
     # read-only at runtime. Render uses it directly from the build checkout.

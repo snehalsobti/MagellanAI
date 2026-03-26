@@ -51,7 +51,7 @@ class ConstraintVerifier:
             RuleCheck("Free Elective Requirement", "verify_free_elective_requirement"),
             RuleCheck("No Repetition Requirement", "verify_no_repetition"),
             RuleCheck("Semester Count (Exactly 4)", "verify_semester_count"),
-            RuleCheck("Course Load (<= 6 per semester)", "verify_courses_per_semester"),
+            RuleCheck("Course Load (== 5 per semester)", "verify_courses_per_semester"),
         ]
 
     def _get_constraint(self, key: str, default=None):

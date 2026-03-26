@@ -6,7 +6,6 @@ import gc
 import json
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from pathlib import Path
 import os
@@ -31,11 +30,6 @@ app = FastAPI(title="MagellanAI API")
 allowed_origins_env = os.getenv("MAGELLAN_ALLOWED_ORIGINS", "")
 allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
 if not allowed_origins:
-    print(
-        "⚠  WARNING: MAGELLAN_ALLOWED_ORIGINS is not set. "
-        "CORS is restricted to localhost only — all requests from the production "
-        "frontend will be blocked. Set this environment variable to your Vercel URL."
-    )
     allowed_origins = ["http://localhost:3000", "http://localhost:5173"]
 
 app.add_middleware(
@@ -270,15 +264,9 @@ async def root():
     return {
         "message": "MagellanAI API",
         "status": "running",
-        "docs": "/docs",
         "endpoints": {
-            "GET  /health": "Liveness check + loaded course count",
-            "GET  /constraints": "ECE program constraint values from the SSOT",
-            "GET  /year12-courses": "Year 1/2 course list for a given year12_choice",
-            "GET  /courses": "Searchable/filterable course catalogue",
-            "POST /generate-profile": "Generate a personalised semester plan (RAG + CP-SAT)",
-            "POST /regenerate-profile": "Regenerate with feedback constraints (CP-SAT only)",
-        },
+            "/generate-profile": "POST - Generate course profile from user interests"
+        }
     }
 
 
@@ -354,13 +342,9 @@ async def generate_profile(request: Request, payload: UserInterestRequest):
         print(f"[RAG] Recommended {len(recommended_courses)} courses: {recommended_courses[:5]}...")
         
         # Step 2: Profile Generator - Create valid profile with preferences
-        # Runs in a thread pool so the CP-SAT solver (blocking, up to 8 s) does
-        # not hold the FastAPI event loop, allowing health checks and other
-        # lightweight requests to be served concurrently.
         print("[ProfileGen] Generating profile...")
-        result = await run_in_threadpool(
-            profile_generator.generate_profile,
-            seed=None,
+        result = profile_generator.generate_profile(
+            seed=None,  # Random each time
             preferences=recommended_courses,
             year12_choice=payload.year12_choice,
         )
@@ -609,10 +593,7 @@ async def regenerate_profile(request: Request, payload: RegenerateProfileRequest
         )
 
     try:
-        # Run the CP-SAT solver in a thread pool (blocking, up to 15 s) so the
-        # FastAPI event loop remains free for other requests during solving.
-        result = await run_in_threadpool(
-            profile_generator.generate_profile,
+        result = profile_generator.generate_profile(
             seed=None,
             preferences=payload.preferences,
             year12_choice=payload.year12_choice,

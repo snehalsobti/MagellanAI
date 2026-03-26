@@ -144,11 +144,7 @@ CREATE POLICY "users_delete_own" ON generation_history
      ```
    - **Start Command**: `python api_server.py`
    - **Instance Type**: **Free** (or Starter $7/mo to avoid cold starts)
-5. Under **Advanced → Disk**, add a persistent disk:
-   - **Name**: `magellan-data`
-   - **Mount Path**: `/opt/render/project/src/data`
-   - **Size**: 1 GB
-6. Under **Environment Variables**, add **all of these before clicking Deploy**:
+5. Under **Environment Variables**, add **all of these before clicking Deploy**:
 
    | Key | Value |
    |-----|-------|
@@ -157,27 +153,18 @@ CREATE POLICY "users_delete_own" ON generation_history
    | `PYTHON_VERSION` | `3.11.10` |
    | `MAGELLAN_ALLOWED_ORIGINS` | *(leave blank for now; fill in after Step 6)* |
 
-7. Click **Create Web Service**.
-8. Wait for the deploy to succeed. The **first build takes 5–10 minutes** (downloading
-   OR-Tools, PyTorch, and sentence-transformers). Subsequent deploys are faster because
-   Render caches the pip dependencies.
-   > If the deploy shows "No open ports detected" — push the latest code first (the
-   > `runtime.txt` and lazy-import fixes from this repo), then trigger a manual redeploy.
-9. Copy the **public URL** Render shows (e.g. `https://magellanai-backend.onrender.com`).
-   You will need this in Step 6.
-
-> **Important — initialise the SQLite database on first deploy.**
-> The persistent disk starts empty. After the first successful deploy:
-> 1. In the Render dashboard, open your service → **Shell** tab.
-> 2. Run these three commands (they take 2–5 minutes):
->    ```bash
->    python3 -m backend.data_pipeline.cli init-db
->    python3 -m backend.data_pipeline.cli migrate-from-folders --data-dir data
->    python3 -m backend.data_pipeline.cli scrape-missing-descriptions
->    ```
-> 3. Trigger a **Manual Deploy** from the Render dashboard so the server restarts
->    and picks up the newly populated database.
-> 4. Subsequent deploys reuse the same disk — you never need to re-run these.
+7. **Do NOT add a persistent disk.** `data/magellan.db` is already committed to the
+   git repository. Render uses it directly from the build checkout. A mounted disk
+   would override (and hide) that file with an empty directory — exactly the wrong
+   thing. If the service currently has a disk attached, remove it in
+   **Service → Settings → Disks → Delete disk** before redeploying.
+8. Click **Create Web Service**.
+9. Wait for the deploy to succeed. The **first build takes 5–10 minutes** (downloading
+   OR-Tools, PyTorch, and sentence-transformers). Subsequent deploys are faster.
+   > **No database initialisation is needed.** The committed `data/magellan.db` contains
+   > the full course catalogue. The server reads it directly — no shell commands required.
+10. Copy the **public URL** Render shows (e.g. `https://magellanai-backend.onrender.com`).
+    You will need this in Step 6.
 
 ---
 
@@ -258,8 +245,12 @@ Now that you have the live Vercel URL, update Google Cloud Console:
 
 3. **Guest sign-in**: click **Continue as Guest** — should navigate to `/options` in under 2 s.
 
-4. **Generate profile**: go to Generate, enter interests, generate a profile. Refresh the
-   page — history should be restored (same browser).
+4. **Generate profile**: go to Generate, enter interests, generate a profile.
+   > The very first generate request after a fresh deploy (or after Render's free-tier
+   > cold start) will take 1–3 minutes — the sentence-transformer model loads and caches
+   > embeddings on first use. All subsequent requests are fast.
+   
+   Refresh the page — history should be restored (same browser session).
 
 5. **Google OAuth**: click **Sign in with Google** on the sign-in page:
    - Browser should redirect to Google's consent screen.

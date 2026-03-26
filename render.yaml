@@ -7,7 +7,8 @@ services:
     buildCommand: |
       pip install --upgrade pip setuptools wheel &&
       pip install -r requirements.txt &&
-      pip install -r requirements_api.txt
+      pip install -r requirements_api.txt &&
+      python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2'); print('Model pre-downloaded OK')"
     startCommand: python api_server.py
     healthCheckPath: /health
     envVars:
@@ -19,7 +20,5 @@ services:
         sync: false      # Set to your Vercel frontend URL, e.g. https://magellanai.vercel.app
       - key: PYTHON_VERSION
         value: "3.11.0"
-    disk:
-      name: magellan-data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1          # Holds magellan.db (~few MB) — 1 GB is the minimum
+    # No persistent disk needed: data/magellan.db is committed to git and is
+    # read-only at runtime. Render uses it directly from the build checkout.

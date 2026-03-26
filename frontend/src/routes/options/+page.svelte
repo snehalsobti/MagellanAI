@@ -42,7 +42,9 @@
 
 	async function handleSignOut() {
 		await signOut();
-		goto('/signin');
+		// Hard redirect (not SvelteKit client-side nav) so the browser discards
+		// any cached page data and the server re-runs the auth guard from scratch.
+		window.location.href = '/signin';
 	}
 </script>
 

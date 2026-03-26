@@ -3,6 +3,7 @@
 
 from collections import defaultdict, deque
 import json
+import threading
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -70,6 +71,30 @@ except Exception as e:
     profile_generator = None
     _required_noncap_codes: frozenset[str] = frozenset()
     _capstone_codes_pool: frozenset[str] = frozenset()
+
+
+# Pre-warm the RAG model and embedding index in a background thread immediately
+# after startup. This ensures Render's ~60 s ALB timeout is never hit by the
+# heavy one-time work (PyTorch model load + course embedding index build).
+_model_ready = False
+
+
+def _background_warmup() -> None:
+    global _model_ready
+    try:
+        print("[warmup] Loading RAG model and embedding index in background...")
+        from backend.ranking_engine.rag_model import get_model, build_or_load_index  # noqa: PLC0415
+        get_model()
+        if catalog_bridge is not None:
+            build_or_load_index(catalog_bridge)
+        _model_ready = True
+        print("[warmup] RAG model ready — first /generate-profile will be fast.")
+    except Exception as exc:
+        print(f"[warmup] Pre-warm failed (non-fatal, first request may be slow): {exc}")
+        _model_ready = True  # Still mark ready so requests aren't blocked
+
+
+threading.Thread(target=_background_warmup, daemon=True).start()
 
 
 class UserInterestRequest(BaseModel):
@@ -274,7 +299,8 @@ async def health_check():
     return {
         "status": "healthy",
         "data_loaded": profile_generator is not None,
-        "num_profile_courses": len(profile_courses) if profile_courses else 0
+        "num_profile_courses": len(profile_courses) if profile_courses else 0,
+        "model_ready": _model_ready,
     }
 
 

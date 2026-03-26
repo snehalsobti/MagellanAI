@@ -549,7 +549,7 @@
 			<div class="error-card">
 				<span class="error-icon" aria-hidden="true">⚠</span>
 				<div>
-					<p class="error-title">Navigation Error</p>
+					<p class="error-title">Error</p>
 					<p class="error-msg">{error}</p>
 				</div>
 			</div>

@@ -4,5 +4,5 @@ build/
 .venv/
 __pycache__/
 .env
-.rag_cache/
 .DS_Store
+# .rag_cache/ is intentionally tracked so Render doesn't rebuild embeddings from scratch on every cold start

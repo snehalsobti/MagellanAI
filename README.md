@@ -16,9 +16,8 @@ An intelligent course-planning assistant for upper-year Electrical and Computer 
 8. [ECE Program Constraints - Single Source of Truth](#ece-program-constraints--single-source-of-truth)
 9. [Architecture Notes](#architecture-notes)
 10. [Troubleshooting](#troubleshooting)
-11. [Deployment](#deployment)
-12. [README Maintenance](#readme-maintenance)
-13. [Contributors](#contributors)
+11. [README Maintenance](#readme-maintenance)
+12. [Contributors](#contributors)
 
 ---
 
@@ -560,103 +559,6 @@ Some technical courses belong to **more than one** ECE technical area simultaneo
 | Stale `.rag_cache/` producing unexpected rankings | Delete `.rag_cache/` — it will be rebuilt on next start |
 | DISLIKE has no visible effect | DISLIKE is a soft −100 penalty. Required courses (e.g. ECE472H1) will still appear because the hard constraint overrides the penalty. Use EXCLUDE to hard-block a non-required course |
 | Rate limit error (HTTP 429) | Both `/generate-profile` and `/regenerate-profile` share 8 req / 60 s per IP. Wait and retry |
-
----
-
-## Deployment
-
-MagellanAI is deployed across three free-tier cloud services:
-
-```
-Browser  ──→  Vercel (SvelteKit frontend)  ──→  Render (FastAPI backend)
-                       │                                │
-                       └──────────────────────────────→ Supabase (auth + history DB)
-```
-
-- **Vercel**: SvelteKit frontend — auto-deploys on every `git push main`
-- **Render**: Python FastAPI backend — auto-deploys on every `git push main`
-- **Supabase**: Google OAuth provider + `generation_history` table + anonymous sign-ins
-
-### Environment variables
-
-**Backend (Render dashboard / root `.env`):**
-
-| Variable | Required | Description |
-|---|---|---|
-| `OPENAI_API_KEY` | Yes | OpenAI API key for GPT-4 reranking |
-| `RAG_OPENAI_MODEL` | No (default `gpt-4`) | Model name for RAG reranking |
-| `MAGELLAN_ALLOWED_ORIGINS` | **Yes in prod** | Comma-separated allowed CORS origins (Vercel URL) |
-| `PYTHON_VERSION` | No | Pin Python version (recommended: `3.11.10`) |
-
-**Frontend (Vercel / `frontend/.env`):**
-
-| Variable | Required | Description |
-|---|---|---|
-| `PUBLIC_API_BASE_URL` | Yes | FastAPI backend URL |
-| `PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
-| `PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key (safe to expose) |
-
-### Render configuration notes
-
-- **No persistent disk**: `data/magellan.db` is committed to git and served read-only from the build checkout. A mounted disk would hide it. If the service has a disk attached, remove it before redeploying.
-- **Free tier cold starts**: The first request after 15+ minutes of inactivity triggers a 30–60 s cold start. Upgrade to Render **Starter** ($7/month) to eliminate cold starts.
-- **Build command**: `pip install --upgrade pip setuptools wheel && pip install -r requirements.txt && pip install -r requirements_api.txt`
-- **Start command**: `python api_server.py`
-- **Health check path**: `/health`
-
-### Supabase setup (one-time)
-
-1. Enable **Anonymous sign-ins** (Authentication → Providers → Anonymous → ON, auto-clean after 30 days).
-2. Enable **Google OAuth** (Authentication → Providers → Google → add Client ID + Secret from Google Cloud Console).
-3. Create the history table (run once in SQL Editor):
-
-```sql
-CREATE TABLE IF NOT EXISTS generation_history (
-    id                   UUID         DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id              UUID         REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    iteration            INTEGER      NOT NULL,
-    profile              JSONB        NOT NULL,
-    feedback             JSONB        NOT NULL DEFAULT '{}',
-    original_preferences JSONB        NOT NULL DEFAULT '[]',
-    year12_choice        TEXT,
-    created_at           TIMESTAMPTZ  DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_generation_history_user ON generation_history(user_id, created_at DESC);
-ALTER TABLE generation_history ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users_select_own" ON generation_history FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "users_insert_own" ON generation_history FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "users_delete_own" ON generation_history FOR DELETE USING (auth.uid() = user_id);
-```
-
-4. Add `http://localhost:5173/auth/callback` and your Vercel URL (e.g. `https://magellanai.vercel.app/auth/callback`) to **Authentication → URL Configuration → Redirect URLs**.
-
-### Google OAuth (one-time)
-
-1. In [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials → create an OAuth client (Web application).
-2. Add the Supabase callback URL as an Authorised redirect URI: `https://YOUR_PROJECT_ID.supabase.co/auth/v1/callback`.
-3. Add your Vercel domain as an Authorised JavaScript origin: `https://magellanai.vercel.app`.
-4. Paste the Client ID and Secret into Supabase → Authentication → Providers → Google.
-
-### Concurrent users & scaling
-
-MagellanAI's CP-SAT solver runs in a background thread pool (does not block the FastAPI event loop). Lightweight requests (`/health`, `/courses`) are always served even while a profile is being generated. However:
-
-- The **Render free tier** runs a single container instance. Simultaneous profile-generation requests queue behind each other (each solve takes 8–15 s). This is acceptable for a demo with low traffic.
-- Upgrading to **Render Starter** ($7/month) eliminates cold starts and gives dedicated CPU, which is the recommended first upgrade for production.
-- For genuine high-concurrency (many simultaneous solves), the solver would need a task queue (e.g. Celery + Redis) — not needed for a capstone demo.
-
-### Manual testing checklist (cannot be automated)
-
-- [ ] Google OAuth full round-trip: sign-in → Google consent → redirect to `/options`
-- [ ] Guest session: sign in → generate profile → refresh → profile and history restored
-- [ ] Google user: sign in → generate → refresh → history still present (Supabase-backed)
-- [ ] Sign out clears session: returns to `/signin`, pressing Back does not return to `/options`
-- [ ] Google user in new incognito window: same history visible (tied to Google account)
-- [ ] Guest in new incognito window: no history (new anonymous user)
-- [ ] Generate Fresh: clears Supabase history; fresh profile starts iteration 1
-- [ ] All existing features unchanged: CP-SAT generation, constraint verification, feedback loop (LOCK/EXCLUDE/LIKE/DISLIKE), honor report, slot editor, course details modal, course search, requirements page
-- [ ] Rate limit (429): 9+ rapid requests to `/generate-profile` → receive 429 on the 9th
-- [ ] Render cold-start: first request after 15+ min idle succeeds (may take 30–60 s)
 
 ---
 

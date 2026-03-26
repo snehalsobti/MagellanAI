@@ -17,7 +17,7 @@ services:
       - key: MAGELLAN_ALLOWED_ORIGINS
         sync: false      # Set to your Vercel frontend URL, e.g. https://magellanai.vercel.app
       - key: PYTHON_VERSION
-        value: "3.11.10"
+        value: "3.11.0"
       - key: PYTHONUNBUFFERED
         value: "1"
     # No persistent disk needed: data/magellan.db is committed to git and is

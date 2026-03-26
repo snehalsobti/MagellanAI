@@ -7,9 +7,8 @@ services:
     buildCommand: |
       pip install --upgrade pip setuptools wheel &&
       pip install torch --index-url https://download.pytorch.org/whl/cpu &&
-      pip install -r requirements.txt &&
-      pip install -r requirements_api.txt &&
-      python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2'); print('Model pre-downloaded OK')"
+      pip install -r requirements_render.txt &&
+      HF_HOME=/opt/render/project/src/.hf_cache python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2'); print('Model pre-downloaded OK')"
     startCommand: python api_server.py
     healthCheckPath: /health
     envVars:
@@ -21,5 +20,7 @@ services:
         sync: false      # Set to your Vercel frontend URL, e.g. https://magellanai.vercel.app
       - key: PYTHON_VERSION
         value: "3.11.0"
+      - key: HF_HOME
+        value: /opt/render/project/src/.hf_cache
     # No persistent disk needed: data/magellan.db is committed to git and is
     # read-only at runtime. Render uses it directly from the build checkout.

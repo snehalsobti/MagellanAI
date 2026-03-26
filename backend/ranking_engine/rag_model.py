@@ -5,6 +5,7 @@ import os
 import json
 import re
 import hashlib
+import threading
 import numpy as np
 import pandas as pd
 import openai
@@ -33,16 +34,25 @@ OPENAI_MODEL = os.getenv("RAG_OPENAI_MODEL", "gpt-4")
 OPENAI_TIMEOUT = 30  # seconds
 
 # Lazy-loaded sentence-transformer model.
-# The import of SentenceTransformer (which pulls in PyTorch — ~500 MB) is deferred
-# until the first call to get_model(). This keeps server startup fast even on
-# memory-constrained hosts like Render's free tier.
+# A double-checked lock ensures only ONE thread ever loads the model, even when
+# the background warmup thread and an incoming request thread race at startup.
+# Loading the model twice simultaneously would double peak RAM usage and OOM
+# Render's 512 MB free tier.
 _model = None
+_model_lock = threading.Lock()
+
 
 def get_model():
     global _model
-    if _model is None:
-        from sentence_transformers import SentenceTransformer  # noqa: PLC0415
-        _model = SentenceTransformer(MODEL_NAME)
+    if _model is not None:          # fast path — no lock needed after first load
+        return _model
+    with _model_lock:               # slow path — only one thread may load
+        if _model is None:          # double-check under lock
+            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+            import torch            # noqa: PLC0415
+            torch.set_num_threads(1)        # limit per-op thread overhead
+            torch.set_grad_enabled(False)   # inference only, never need gradients
+            _model = SentenceTransformer(MODEL_NAME)
     return _model
 
 

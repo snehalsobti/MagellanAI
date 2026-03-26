@@ -613,16 +613,21 @@
 	/* ── Coordinates strip ─────────────────────────────────────────────────── */
 	.coordinates {
 		position: fixed;
-		bottom: 16px;
-		left: 50%;
-		transform: translateX(-50%);
-		z-index: 5;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		z-index: 20; /* always above hero-card (z-index: 5) */
 		font-family: 'JetBrains Mono', monospace;
 		font-size: 0.68rem;
 		letter-spacing: 0.12em;
 		color: var(--gold);
-		opacity: 0.7;
+		opacity: 0.85;
 		white-space: nowrap;
+		text-align: center;
+		padding: 10px 16px 14px;
+		/* Gradient backdrop prevents card text bleeding through on short screens */
+		background: linear-gradient(to top, var(--bg) 55%, transparent);
+		pointer-events: none;
 	}
 
 	/* ── Responsive ────────────────────────────────────────────────────────── */

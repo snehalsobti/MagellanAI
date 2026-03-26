@@ -13,6 +13,10 @@ function toMessage(status: number, detail: unknown): string {
 		return detail;
 	}
 
+	if (status === 503) {
+		return 'Backend is warming up after a restart. Please wait 30–60 seconds and try again.';
+	}
+
 	if (status === 429) {
 		return 'Too many requests. Please wait a moment and try again.';
 	}

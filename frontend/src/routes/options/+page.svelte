@@ -1,9 +1,20 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { signOut } from '$lib/auth';
+	import { signOut, getSession } from '$lib/auth';
 	import { theme } from '$lib/stores/theme';
 	import logo from '$lib/assets/magellanai_logo.png';
+
+	// Client-side session guard: if the user navigated back to this page after
+	// signing out (browser served it from cache), detect the missing session and
+	// redirect immediately. Using replace() keeps the history stack clean.
+	onMount(async () => {
+		const session = await getSession();
+		if (!session) {
+			window.location.replace('/signin');
+		}
+	});
 	// User info from server-side session (set by +layout.server.ts).
 	const user = $derived($page.data.user);
 	const isGuest = $derived(user?.is_anonymous === true);
@@ -42,9 +53,9 @@
 
 	async function handleSignOut() {
 		await signOut();
-		// Hard redirect (not SvelteKit client-side nav) so the browser discards
-		// any cached page data and the server re-runs the auth guard from scratch.
-		window.location.href = '/signin';
+		// replace() removes this page from the history stack so pressing Back
+		// after sign-out never returns to the options page.
+		window.location.replace('/signin');
 	}
 </script>
 

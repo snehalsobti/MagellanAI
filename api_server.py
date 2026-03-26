@@ -2,6 +2,7 @@
 # FastAPI server that connects frontend to backend pipeline
 
 from collections import defaultdict, deque
+import gc
 import json
 import threading
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -349,6 +350,12 @@ async def generate_profile(request: Request, payload: UserInterestRequest):
     if not profile_generator:
         raise HTTPException(status_code=500, detail="Backend not initialized properly")
 
+    if not _model_ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Backend is warming up — RAG model is loading. Please try again in 30–60 seconds.",
+        )
+
     client_ip = _extract_client_ip(request)
     if not rate_limiter.check(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Please try again shortly.")
@@ -423,7 +430,7 @@ async def generate_profile(request: Request, payload: UserInterestRequest):
             for i in range(4)
         ]
         
-        return ProfileResponse(
+        response = ProfileResponse(
             success=True,
             courses=courses_info,
             semester_plan=semester_plan_payload,
@@ -439,11 +446,14 @@ async def generate_profile(request: Request, payload: UserInterestRequest):
             preference_weighted_score=result.get("preference_weighted_score"),
             constraint_diagnostics=result.get("constraint_diagnostics"),
         )
-        
+        gc.collect()
+        return response
+
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
+        gc.collect()
         raise HTTPException(status_code=500, detail=f"Error generating profile: {str(e)}")
 
 
@@ -579,6 +589,12 @@ async def regenerate_profile(request: Request, payload: RegenerateProfileRequest
     if not profile_generator:
         raise HTTPException(status_code=500, detail="Backend not initialized properly")
 
+    if not _model_ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Backend is warming up — RAG model is loading. Please try again in 30–60 seconds.",
+        )
+
     client_ip = _extract_client_ip(request)
     if not rate_limiter.check(client_ip):
         raise HTTPException(status_code=429, detail="Too many requests. Please try again shortly.")
@@ -690,7 +706,7 @@ async def regenerate_profile(request: Request, payload: RegenerateProfileRequest
     verifier = ConstraintVerifier(result["semester_plan"], year12_choice=payload.year12_choice)
     constraints_satisfied = verifier.verify()
 
-    return RegenerateProfileResponse(
+    response = RegenerateProfileResponse(
         success=True,
         courses=courses_info,
         semester_plan=semester_plan_payload,
@@ -712,6 +728,8 @@ async def regenerate_profile(request: Request, payload: RegenerateProfileRequest
             disliked_forced=result.get("disliked_forced", []),
         ),
     )
+    gc.collect()
+    return response
 
 
 if __name__ == "__main__":
